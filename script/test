@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# prove_it: full test suite — runs before every git commit
+# Replace the test command below, or change the 'full-tests' command
+# in .claude/prove_it.json to point at your existing test runner.
+set -e
+trap 'prove_it record --name full-tests --result $?' EXIT
+echo "No tests configured. Edit script/test to run your test suite."
+exit 1
