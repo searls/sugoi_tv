@@ -1,1 +1,15 @@
+# prove_it local config
 .claude/prove_it.local.json
+
+# SPM build artifacts
+.build/
+
+# SPM workspace state (user-specific schemes, debugger config)
+.swiftpm/
+
+# Xcode user-specific data
+xcuserdata/
+*.xcuserstate
+
+# Nested prove_it local configs (e.g. SugoiCore/.claude/)
+**/.claude/prove_it.local.json
