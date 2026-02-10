@@ -39,7 +39,7 @@ struct PlayerView: View {
           .tint(.white)
       }
     }
-    .overlay(alignment: .topLeading) {
+    .overlay(alignment: .topTrailing) {
       #if !os(tvOS)
         Button {
           dismiss()

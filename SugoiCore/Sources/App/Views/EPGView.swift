@@ -33,7 +33,7 @@ struct EPGView: View {
       epgList
     }
     .navigationTitle(channel.name)
-    .task {
+    .task(id: channel.channelId) {
       if let session = authManager.session {
         await channelStore.loadEPG(for: channel, session: session)
       }
@@ -110,6 +110,7 @@ struct EPGView: View {
           Section(Self.dateFormatter.string(from: group.date)) {
             ForEach(group.entries) { entry in
               EPGRow(entry: entry, isCurrent: isCurrentProgram(entry))
+                .opacity(entry.hasVOD ? 1.0 : 0.5)
                 .onTapGesture {
                   if entry.hasVOD {
                     selectedEntry = entry
