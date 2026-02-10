@@ -7,7 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		D0C17A722F3BD199005A596E /* SugoiCore in Frameworks */ = {isa = PBXBuildFile; productRef = D0C17A712F3BD199005A596E /* SugoiCore */; };
+		D007A77E2F3BDA9700F2C5EC /* SugoiCore in Frameworks */ = {isa = PBXBuildFile; productRef = D007A77D2F3BDA9700F2C5EC /* SugoiCore */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -69,7 +69,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				D0C17A722F3BD199005A596E /* SugoiCore in Frameworks */,
+				D007A77E2F3BDA9700F2C5EC /* SugoiCore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -90,12 +90,20 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		D007A77C2F3BDA9700F2C5EC /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 		D0C17A382F3BD198005A596E = {
 			isa = PBXGroup;
 			children = (
 				D0C17A432F3BD198005A596E /* SugoiTV */,
 				D0C17A552F3BD199005A596E /* SugoiTVTests */,
 				D0C17A5F2F3BD199005A596E /* SugoiTVUITests */,
+				D007A77C2F3BDA9700F2C5EC /* Frameworks */,
 				D0C17A422F3BD198005A596E /* Products */,
 			);
 			sourceTree = "<group>";
@@ -130,7 +138,7 @@
 			);
 			name = SugoiTV;
 			packageProductDependencies = (
-				D0C17A712F3BD199005A596E /* SugoiCore */,
+				D007A77D2F3BDA9700F2C5EC /* SugoiCore */,
 			);
 			productName = SugoiTV;
 			productReference = D0C17A412F3BD198005A596E /* SugoiTV.app */;
@@ -214,10 +222,9 @@
 			);
 			mainGroup = D0C17A382F3BD198005A596E;
 			minimizedProjectReferenceProxies = 1;
-			preferredProjectObjectVersion = 77;
 			packageReferences = (
-				D0C17A702F3BD199005A596E /* XCLocalSwiftPackageReference "SugoiCore" */,
 			);
+			preferredProjectObjectVersion = 77;
 			productRefGroup = D0C17A422F3BD198005A596E /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -639,21 +646,13 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
-	};
-
-/* Begin XCLocalSwiftPackageReference section */
-		D0C17A702F3BD199005A596E /* XCLocalSwiftPackageReference "SugoiCore" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = SugoiCore;
-		};
-/* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		D0C17A712F3BD199005A596E /* SugoiCore */ = {
+		D007A77D2F3BDA9700F2C5EC /* SugoiCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = SugoiCore;
 		};
 /* End XCSwiftPackageProductDependency section */
-
+	};
 	rootObject = D0C17A392F3BD198005A596E /* Project object */;
 }
