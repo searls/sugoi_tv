@@ -1,8 +1,79 @@
 #!/usr/bin/env bash
 # prove_it: full test suite — runs before every git commit
-# Replace the test command below, or change the 'full-tests' command
-# in .claude/prove_it.json to point at your existing test runner.
+# Supports modes: unit (default), ui, all
+# Supports platforms: mac (default), iphone, ipad, appletv, all
 set -e
 trap 'prove_it record --name full-tests --result $?' EXIT
-echo "No tests configured. Edit script/test to run your test suite."
-exit 1
+
+MODE="${1:-unit}"
+PLATFORM="${2:-mac}"
+PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
+run_unit() {
+  echo "==> Running unit tests (swift test)..."
+  cd "$PROJECT_DIR/SugoiCore"
+  swift test 2>&1
+}
+
+resolve_destination() {
+  case "$1" in
+    mac)
+      echo "platform=macOS"
+      ;;
+    iphone)
+      echo "platform=iOS Simulator,name=iPhone 16 Pro"
+      ;;
+    ipad)
+      echo "platform=iOS Simulator,name=iPad Pro 13-inch (M4)"
+      ;;
+    appletv)
+      echo "platform=tvOS Simulator,name=Apple TV 4K (3rd generation)"
+      ;;
+    *)
+      echo "Unknown platform: $1" >&2
+      exit 1
+      ;;
+  esac
+}
+
+run_ui() {
+  local plat="${1:-mac}"
+  local dest
+  dest="$(resolve_destination "$plat")"
+  echo "==> Running UI tests on $plat..."
+  xcodebuild test \
+    -workspace "$PROJECT_DIR/SugoiTV.xcworkspace" \
+    -scheme SugoiTV \
+    -destination "$dest" \
+    -only-testing:SugoiTVUITests \
+    2>&1
+}
+
+case "$MODE" in
+  unit)
+    run_unit
+    ;;
+  ui)
+    if [ "$PLATFORM" = "all" ]; then
+      for p in mac iphone ipad appletv; do
+        run_ui "$p"
+      done
+    else
+      run_ui "$PLATFORM"
+    fi
+    ;;
+  all)
+    run_unit
+    if [ "$PLATFORM" = "all" ]; then
+      for p in mac iphone ipad appletv; do
+        run_ui "$p"
+      done
+    else
+      run_ui "$PLATFORM"
+    fi
+    ;;
+  *)
+    echo "Usage: $0 [unit|ui|all] [mac|iphone|ipad|appletv|all]"
+    exit 1
+    ;;
+esac

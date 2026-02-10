@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Workspace
+   version = "1.0">
+   <FileRef
+      location = "group:SugoiTV.xcodeproj">
+   </FileRef>
+   <FileRef
+      location = "group:SugoiCore">
+   </FileRef>
+   <FileRef
+      location = "group:TestPlans/SugoiTV-Full.xctestplan">
+   </FileRef>
+</Workspace>

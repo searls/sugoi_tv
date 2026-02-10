@@ -1,0 +1,42 @@
+{
+  "configurations" : [
+    {
+      "id" : "E8A1F2B0-1234-4567-8901-ABCDEF123456",
+      "name" : "Default",
+      "options" : {
+        "mainThreadCheckerEnabled" : "failure"
+      }
+    }
+  ],
+  "defaultOptions" : {
+    "testExecutionOrdering" : "random",
+    "testTimeoutsEnabled" : true
+  },
+  "testTargets" : [
+    {
+      "parallelizable" : true,
+      "target" : {
+        "containerPath" : "container:SugoiTV.xcodeproj",
+        "identifier" : "D0C17A512F3BD199005A596E",
+        "name" : "SugoiTVTests"
+      }
+    },
+    {
+      "parallelizable" : true,
+      "target" : {
+        "containerPath" : "container:SugoiTV.xcodeproj",
+        "identifier" : "D0C17A5B2F3BD199005A596E",
+        "name" : "SugoiTVUITests"
+      }
+    },
+    {
+      "parallelizable" : true,
+      "target" : {
+        "containerPath" : "container:SugoiCore",
+        "identifier" : "SugoiCoreTests",
+        "name" : "SugoiCoreTests"
+      }
+    }
+  ],
+  "version" : 1
+}
