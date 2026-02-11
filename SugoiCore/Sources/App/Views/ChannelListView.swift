@@ -15,6 +15,7 @@ struct ChannelListView: View {
     } detail: {
       if let channel = selectedChannel {
         EPGView(channel: channel)
+          .id(channel.channelId)
       } else {
         ContentUnavailableView("Select a Channel", systemImage: "tv")
       }

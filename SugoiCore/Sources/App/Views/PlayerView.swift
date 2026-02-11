@@ -63,6 +63,7 @@ struct PlayerView: View {
     }
   }
 
+  @MainActor
   private func startPlayback() async {
     // Claim single-play
     await singlePlay.startPolling(session: session)
@@ -103,5 +104,18 @@ struct PlayerView: View {
 
     self.player = avPlayer
     avPlayer.play()
+
+    // Monitor for playback failures so we show a real error instead of
+    // the opaque slashed-play-button icon from VideoPlayer
+    while !Task.isCancelled {
+      if item.status == .readyToPlay { break }
+      if item.status == .failed {
+        errorMessage = item.error?.localizedDescription ?? "Playback failed"
+        player?.pause()
+        player = nil
+        return
+      }
+      try? await Task.sleep(for: .milliseconds(200))
+    }
   }
 }

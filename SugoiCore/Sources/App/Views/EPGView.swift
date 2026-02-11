@@ -109,14 +109,14 @@ struct EPGView: View {
         ForEach(grouped, id: \.date) { group in
           Section(Self.dateFormatter.string(from: group.date)) {
             ForEach(group.entries) { entry in
-              EPGRow(entry: entry, isCurrent: isCurrentProgram(entry))
-                .opacity(entry.hasVOD ? 1.0 : 0.5)
-                .onTapGesture {
-                  if entry.hasVOD {
-                    selectedEntry = entry
-                    showPlayer = true
-                  }
-                }
+              Button {
+                selectedEntry = entry
+                showPlayer = true
+              } label: {
+                EPGRow(entry: entry, isCurrent: isCurrentProgram(entry))
+              }
+              .buttonStyle(.plain)
+              .disabled(!entry.hasVOD)
             }
           }
         }
