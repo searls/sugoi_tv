@@ -49,6 +49,21 @@ final class AuthManager {
       }
     }
 
+    #if DEBUG
+      // Auto-login from environment variables (for simulator testing)
+      let env = ProcessInfo.processInfo.environment
+      if let envCid = env["YOITV_USER"],
+        let envPass = env["YOITV_PASS"]
+      {
+        do {
+          try await login(cid: envCid, password: envPass)
+          return
+        } catch {
+          // Fall through to show login screen
+        }
+      }
+    #endif
+
     state = .loggedOut
   }
 

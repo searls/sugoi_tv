@@ -25,6 +25,11 @@ struct ChannelListView: View {
         await channelStore.loadChannels(session: session, modelContext: modelContext)
       }
     }
+    .onChange(of: channelStore.channels) {
+      if selectedChannel == nil, let first = channelStore.channels.first {
+        selectedChannel = first
+      }
+    }
   }
 
   @ViewBuilder
