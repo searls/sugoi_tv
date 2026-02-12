@@ -21,14 +21,6 @@
           "command": "prove_it run_builtin config:lock"
         },
         {
-          "name": "require-wip",
-          "type": "script",
-          "command": "prove_it run_builtin beads:require_wip",
-          "when": {
-            "fileExists": ".beads"
-          }
-        },
-        {
           "name": "ensure-tests",
           "type": "agent",
           "promptType": "reference",
@@ -84,5 +76,5 @@
       ]
     }
   ],
-  "initSeed": "890f2c7b9339"
+  "initSeed": "4b24945cfcdf"
 }
