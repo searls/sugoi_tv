@@ -1,28 +1,34 @@
 import Foundation
 
-/// A URLProtocol subclass that intercepts all requests and returns mock responses.
-/// Use `MockURLProtocol.requestHandler` to provide responses per-test.
+/// A URLProtocol subclass that dispatches requests to per-session handlers
+/// via the `X-Mock-Session` header. Each `MockHTTPSession` registers itself
+/// and owns its handler + captured requests, eliminating shared mutable state.
 public final class MockURLProtocol: URLProtocol, @unchecked Sendable {
 
-  /// Handler called for every intercepted request. Set this in your test setUp.
-  /// Return (HTTPURLResponse, Data) or throw to simulate an error.
-  nonisolated(unsafe) public static var requestHandler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
+  // MARK: - Session dispatch table
 
-  /// All requests captured during the test (for assertions)
-  nonisolated(unsafe) private static var _requests: [URLRequest] = []
   private static let lock = NSLock()
+  nonisolated(unsafe) private static var sessions: [String: MockHTTPSession] = [:]
 
-  public static var capturedRequests: [URLRequest] {
+  static func register(_ session: MockHTTPSession) {
     lock.lock()
-    defer { lock.unlock() }
-    return _requests
+    sessions[session.id] = session
+    lock.unlock()
   }
 
-  public static func reset() {
+  static func unregister(id: String) {
     lock.lock()
-    _requests.removeAll()
+    sessions.removeValue(forKey: id)
     lock.unlock()
-    requestHandler = nil
+  }
+
+  private static func session(for request: URLRequest) -> MockHTTPSession? {
+    guard let id = request.allHTTPHeaderFields?["X-Mock-Session"]
+      ?? request.value(forHTTPHeaderField: "X-Mock-Session")
+    else { return nil }
+    lock.lock()
+    defer { lock.unlock() }
+    return sessions[id]
   }
 
   // MARK: - URLProtocol overrides
@@ -36,11 +42,14 @@ public final class MockURLProtocol: URLProtocol, @unchecked Sendable {
   }
 
   override public func startLoading() {
-    Self.lock.lock()
-    Self._requests.append(request)
-    Self.lock.unlock()
+    guard let mockSession = Self.session(for: request) else {
+      client?.urlProtocol(self, didFailWithError: MockURLProtocolError.noHandler)
+      return
+    }
 
-    guard let handler = Self.requestHandler else {
+    mockSession.appendRequest(request)
+
+    guard let handler = mockSession.requestHandler else {
       client?.urlProtocol(self, didFailWithError: MockURLProtocolError.noHandler)
       return
     }
@@ -61,17 +70,6 @@ public final class MockURLProtocol: URLProtocol, @unchecked Sendable {
 public enum MockURLProtocolError: Error {
   case noHandler
   case unmatchedRequest(URLRequest)
-}
-
-// MARK: - URLSession convenience
-
-extension URLSession {
-  /// Create a URLSession configured to use MockURLProtocol
-  public static func mock() -> URLSession {
-    let config = URLSessionConfiguration.ephemeral
-    config.protocolClasses = [MockURLProtocol.self]
-    return URLSession(configuration: config)
-  }
 }
 
 // MARK: - Route-based handler builder
@@ -108,7 +106,7 @@ public struct MockRouter: Sendable {
     on(pathContaining: substring, statusCode: statusCode, body: data)
   }
 
-  /// Build the request handler for use with MockURLProtocol
+  /// Build the request handler for use with MockHTTPSession
   public func handler() -> @Sendable (URLRequest) throws -> (HTTPURLResponse, Data) {
     let capturedRoutes = routes
     return { request in
