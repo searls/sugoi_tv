@@ -23,7 +23,10 @@ let package = Package(
     .testTarget(
       name: "SugoiCoreTests",
       dependencies: ["SugoiCore"],
-      path: "Tests"
+      path: "Tests",
+      resources: [
+        .copy("Fixtures"),
+      ]
     ),
   ]
 )
