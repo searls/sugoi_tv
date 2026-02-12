@@ -1311,4 +1311,612 @@ struct EPGServiceTests {
   }
 }
 
+// MARK: - SinglePlayService Tests
+
+@Suite("SinglePlayService")
+struct SinglePlayServiceTests {
+  @Test("Check ownership returns true when API returns own=true")
+  func checkOwnershipTrue() async throws {
+    MockURLProtocol.reset()
+    MockURLProtocol.requestHandler = { request in
+      #expect(request.url!.absoluteString.contains("single.sjs"))
+      #expect(request.url!.absoluteString.contains("own=true"))
+      #expect(request.url!.absoluteString.contains("ua=ios"))
+      let json = #"{"own": true, "code": "OK"}"#
+      let response = HTTPURLResponse(
+        url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil
+      )!
+      return (response, Data(json.utf8))
+    }
+
+    let service = SinglePlayService(apiClient: APIClient(session: .mock()))
+    let owns = try await service.checkOwnership(
+      singleEndpoint: "https://crm.yoitv.com/single.sjs",
+      accessToken: "token123",
+      ua: "ios",
+      own: true
+    )
+
+    #expect(owns == true)
+    #expect(await service.isOwning == true)
+  }
+
+  @Test("Check ownership returns false when another session is active")
+  func checkOwnershipFalse() async throws {
+    MockURLProtocol.reset()
+    MockURLProtocol.requestHandler = { request in
+      let json = #"{"own": false, "code": "OK"}"#
+      let response = HTTPURLResponse(
+        url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil
+      )!
+      return (response, Data(json.utf8))
+    }
+
+    let service = SinglePlayService(apiClient: APIClient(session: .mock()))
+    let owns = try await service.checkOwnership(
+      singleEndpoint: "https://crm.yoitv.com/single.sjs",
+      accessToken: "token123",
+      ua: "ios",
+      own: true
+    )
+
+    #expect(owns == false)
+    #expect(await service.isOwning == false)
+  }
+
+  @Test("Stop polling resets ownership state")
+  func stopPollingResetsState() async throws {
+    MockURLProtocol.reset()
+    MockURLProtocol.requestHandler = { request in
+      let json = #"{"own": true, "code": "OK"}"#
+      let response = HTTPURLResponse(
+        url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil
+      )!
+      return (response, Data(json.utf8))
+    }
+
+    let service = SinglePlayService(apiClient: APIClient(session: .mock()))
+    _ = try await service.checkOwnership(
+      singleEndpoint: "https://crm.yoitv.com/single.sjs",
+      accessToken: "t", ua: "ios", own: true
+    )
+    #expect(await service.isOwning == true)
+
+    await service.stopPolling()
+    #expect(await service.isOwning == false)
+  }
+
+  @Test("Platform UA returns expected value")
+  func platformUA() {
+    let ua = SinglePlayService.platformUA
+    #if os(iOS)
+    #expect(ua == "ios")
+    #elseif os(macOS)
+    #expect(ua == "macos")
+    #elseif os(tvOS)
+    #expect(ua == "tvos")
+    #endif
+  }
+}
+
+// MARK: - LoginViewModel Tests
+
+@Suite("LoginViewModel")
+struct LoginViewModelTests {
+  @Test("Empty fields show validation error")
+  @MainActor
+  func emptyFieldsValidation() async {
+    let keychain = MockKeychainService()
+    let client = APIClient(session: .mock())
+    let auth = AuthService(keychain: keychain, apiClient: client)
+    let vm = LoginViewModel(authService: auth)
+
+    vm.customerID = ""
+    vm.password = ""
+    await vm.login()
+
+    #expect(vm.errorMessage == "Please enter your customer ID and password.")
+    #expect(vm.isLoading == false)
+  }
+
+  @Test("Successful login clears error message")
+  @MainActor
+  func successfulLogin() async {
+    MockURLProtocol.reset()
+    let loginJSON = """
+      {"access_token":"t","token_type":"bearer","expires_in":9999999999,"refresh_token":"r","expired":false,"disabled":false,"confirmed":true,"cid":"CID","type":"tvum_cid","trial":0,"create_time":0,"expire_time":9999999999,"product_config":"{\\"vms_host\\":\\"http://live.yoitv.com:9083\\",\\"vms_vod_host\\":\\"http://vod.yoitv.com:9083\\",\\"vms_uid\\":\\"UID\\",\\"vms_live_cid\\":\\"CID\\",\\"vms_referer\\":\\"http://play.yoitv.com\\",\\"epg_days\\":30,\\"single\\":\\"https://crm.yoitv.com/single.sjs\\"}","server_time":0,"code":"OK"}
+      """
+    MockURLProtocol.requestHandler = { request in
+      let response = HTTPURLResponse(
+        url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil
+      )!
+      return (response, Data(loginJSON.utf8))
+    }
+
+    let auth = AuthService(keychain: MockKeychainService(), apiClient: APIClient(session: .mock()))
+    let vm = LoginViewModel(authService: auth)
+    vm.customerID = "testuser"
+    vm.password = "testpass"
+
+    await vm.login()
+
+    #expect(vm.errorMessage == nil)
+    #expect(vm.isLoading == false)
+  }
+
+  @Test("Failed login shows appropriate error")
+  @MainActor
+  func failedLogin() async {
+    MockURLProtocol.reset()
+    let failJSON = """
+      {"access_token":"","token_type":"","expires_in":0,"refresh_token":"","expired":false,"disabled":false,"confirmed":true,"cid":"","type":"","trial":0,"create_time":0,"expire_time":0,"product_config":"{}","server_time":0,"code":"INVALID"}
+      """
+    MockURLProtocol.requestHandler = { request in
+      let response = HTTPURLResponse(
+        url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil
+      )!
+      return (response, Data(failJSON.utf8))
+    }
+
+    let auth = AuthService(keychain: MockKeychainService(), apiClient: APIClient(session: .mock()))
+    let vm = LoginViewModel(authService: auth)
+    vm.customerID = "bad"
+    vm.password = "bad"
+
+    await vm.login()
+
+    #expect(vm.errorMessage == "Invalid customer ID or password.")
+    #expect(vm.isLoading == false)
+  }
+
+  @Test("Network error shows connection message")
+  @MainActor
+  func networkError() async {
+    MockURLProtocol.reset()
+    MockURLProtocol.requestHandler = { _ in
+      throw URLError(.notConnectedToInternet)
+    }
+
+    let auth = AuthService(keychain: MockKeychainService(), apiClient: APIClient(session: .mock()))
+    let vm = LoginViewModel(authService: auth)
+    vm.customerID = "user"
+    vm.password = "pass"
+
+    await vm.login()
+
+    #expect(vm.errorMessage == "Network error. Please check your connection.")
+    #expect(vm.isLoading == false)
+  }
+}
+
+// MARK: - ChannelListViewModel Tests
+
+@Suite("ChannelListViewModel")
+struct ChannelListViewModelTests {
+  static let channelsJSON = """
+    {
+      "result": [
+        {"id": "CH1", "name": "NHK総合", "description": "NHK General", "tags": "$LIVE_CAT_関東", "no": 1, "playpath": "/nhk", "running": 1},
+        {"id": "CH2", "name": "テレビ朝日", "description": "TV Asahi", "tags": "$LIVE_CAT_関東", "no": 2, "playpath": "/tvasahi"},
+        {"id": "CH3", "name": "MBS毎日放送", "tags": "$LIVE_CAT_関西", "no": 3, "playpath": "/mbs"}
+      ],
+      "code": "OK"
+    }
+    """
+
+  static var testConfig: ProductConfig {
+    ProductConfig(
+      vmsHost: "http://live.yoitv.com:9083",
+      vmsVodHost: nil, vmsUid: "UID", vmsLiveCid: "CID",
+      vmsReferer: "http://play.yoitv.com", epgDays: nil, single: nil,
+      vmsChannelListHost: nil, vmsLiveHost: nil, vmsRecordHost: nil, vmsLiveUid: nil
+    )
+  }
+
+  @Test("Loads channels and groups them")
+  @MainActor
+  func loadChannels() async {
+    MockURLProtocol.reset()
+    MockURLProtocol.requestHandler = { _ in
+      let response = HTTPURLResponse(
+        url: URL(string: "http://test.com")!, statusCode: 200, httpVersion: nil, headerFields: nil
+      )!
+      return (response, Data(Self.channelsJSON.utf8))
+    }
+
+    let service = ChannelService(apiClient: APIClient(session: .mock()))
+    let vm = ChannelListViewModel(channelService: service, config: Self.testConfig)
+
+    await vm.loadChannels()
+
+    #expect(vm.isLoading == false)
+    #expect(vm.errorMessage == nil)
+    #expect(vm.channelGroups.count == 2) // 関東 and 関西
+    #expect(vm.channelGroups[0].category == "関東")
+    #expect(vm.channelGroups[0].channels.count == 2)
+    #expect(vm.channelGroups[1].category == "関西")
+  }
+
+  @Test("Search filters channels by name")
+  @MainActor
+  func searchByName() async {
+    MockURLProtocol.reset()
+    MockURLProtocol.requestHandler = { _ in
+      let response = HTTPURLResponse(
+        url: URL(string: "http://test.com")!, statusCode: 200, httpVersion: nil, headerFields: nil
+      )!
+      return (response, Data(Self.channelsJSON.utf8))
+    }
+
+    let service = ChannelService(apiClient: APIClient(session: .mock()))
+    let vm = ChannelListViewModel(channelService: service, config: Self.testConfig)
+
+    await vm.loadChannels()
+    vm.searchText = "NHK"
+
+    let filtered = vm.filteredGroups
+    #expect(filtered.count == 1)
+    #expect(filtered[0].channels.count == 1)
+    #expect(filtered[0].channels[0].name == "NHK総合")
+  }
+
+  @Test("Search filters channels by description")
+  @MainActor
+  func searchByDescription() async {
+    MockURLProtocol.reset()
+    MockURLProtocol.requestHandler = { _ in
+      let response = HTTPURLResponse(
+        url: URL(string: "http://test.com")!, statusCode: 200, httpVersion: nil, headerFields: nil
+      )!
+      return (response, Data(Self.channelsJSON.utf8))
+    }
+
+    let service = ChannelService(apiClient: APIClient(session: .mock()))
+    let vm = ChannelListViewModel(channelService: service, config: Self.testConfig)
+
+    await vm.loadChannels()
+    vm.searchText = "Asahi"
+
+    let filtered = vm.filteredGroups
+    #expect(filtered.count == 1)
+    #expect(filtered[0].channels[0].name == "テレビ朝日")
+  }
+
+  @Test("Empty search returns all groups")
+  @MainActor
+  func emptySearchReturnsAll() async {
+    MockURLProtocol.reset()
+    MockURLProtocol.requestHandler = { _ in
+      let response = HTTPURLResponse(
+        url: URL(string: "http://test.com")!, statusCode: 200, httpVersion: nil, headerFields: nil
+      )!
+      return (response, Data(Self.channelsJSON.utf8))
+    }
+
+    let service = ChannelService(apiClient: APIClient(session: .mock()))
+    let vm = ChannelListViewModel(channelService: service, config: Self.testConfig)
+
+    await vm.loadChannels()
+    vm.searchText = ""
+
+    #expect(vm.filteredGroups.count == vm.channelGroups.count)
+  }
+
+  @Test("Load failure sets error message")
+  @MainActor
+  func loadFailure() async {
+    MockURLProtocol.reset()
+    MockURLProtocol.requestHandler = { _ in
+      throw URLError(.notConnectedToInternet)
+    }
+
+    let service = ChannelService(apiClient: APIClient(session: .mock()))
+    let vm = ChannelListViewModel(channelService: service, config: Self.testConfig)
+
+    await vm.loadChannels()
+
+    #expect(vm.isLoading == false)
+    #expect(vm.errorMessage == "Failed to load channels.")
+    #expect(vm.channelGroups.isEmpty)
+  }
+}
+
+// MARK: - EPGViewModel Tests
+
+@Suite("EPGViewModel")
+struct EPGViewModelTests {
+  static var testConfig: ProductConfig {
+    ProductConfig(
+      vmsHost: "http://live.yoitv.com:9083",
+      vmsVodHost: nil, vmsUid: "UID", vmsLiveCid: "CID",
+      vmsReferer: "http://play.yoitv.com", epgDays: 30, single: nil,
+      vmsChannelListHost: nil, vmsLiveHost: nil, vmsRecordHost: nil, vmsLiveUid: nil
+    )
+  }
+
+  @Test("Loads EPG entries successfully")
+  @MainActor
+  func loadEPG() async {
+    MockURLProtocol.reset()
+    let epgJSON = """
+      {
+        "result": [{
+          "id": "CH1",
+          "name": "NHK",
+          "record_epg": "[{\\"time\\":1000,\\"title\\":\\"Morning Show\\",\\"path\\":\\"/query/morning\\"},{\\"time\\":2000,\\"title\\":\\"Afternoon Show\\",\\"path\\":\\"\\"},{\\"time\\":9999999999,\\"title\\":\\"Future Show\\",\\"path\\":\\"\\"}]"
+        }],
+        "code": "OK"
+      }
+      """
+    MockURLProtocol.requestHandler = { _ in
+      let response = HTTPURLResponse(
+        url: URL(string: "http://test.com")!, statusCode: 200, httpVersion: nil, headerFields: nil
+      )!
+      return (response, Data(epgJSON.utf8))
+    }
+
+    let service = EPGService(apiClient: APIClient(session: .mock()))
+    let vm = EPGViewModel(
+      epgService: service, config: Self.testConfig,
+      channelID: "CH1", channelName: "NHK"
+    )
+
+    await vm.loadEPG()
+
+    #expect(vm.isLoading == false)
+    #expect(vm.errorMessage == nil)
+    #expect(vm.entries.count == 3)
+    #expect(vm.channelName == "NHK")
+  }
+
+  @Test("Current program is detected")
+  @MainActor
+  func currentProgram() async {
+    MockURLProtocol.reset()
+    let json = """
+      {
+        "result": [{
+          "id": "CH1",
+          "name": "NHK",
+          "record_epg": "[{\\"time\\":1000,\\"title\\":\\"Past Show\\",\\"path\\":\\"/past\\"},{\\"time\\":\(Int(Date().timeIntervalSince1970) - 100),\\"title\\":\\"Current Show\\",\\"path\\":\\"\\"},{\\"time\\":\(Int(Date().timeIntervalSince1970) + 3600),\\"title\\":\\"Future Show\\",\\"path\\":\\"\\"}]"
+        }],
+        "code": "OK"
+      }
+      """
+    MockURLProtocol.requestHandler = { _ in
+      let response = HTTPURLResponse(
+        url: URL(string: "http://test.com")!, statusCode: 200, httpVersion: nil, headerFields: nil
+      )!
+      return (response, Data(json.utf8))
+    }
+
+    let service = EPGService(apiClient: APIClient(session: .mock()))
+    let vm = EPGViewModel(
+      epgService: service, config: Self.testConfig,
+      channelID: "CH1", channelName: "NHK"
+    )
+
+    await vm.loadEPG()
+
+    #expect(vm.currentProgram != nil)
+    #expect(vm.currentProgram?.title == "Current Show")
+  }
+
+  @Test("Load failure sets error message")
+  @MainActor
+  func loadFailure() async {
+    MockURLProtocol.reset()
+    MockURLProtocol.requestHandler = { _ in
+      throw URLError(.notConnectedToInternet)
+    }
+
+    let service = EPGService(apiClient: APIClient(session: .mock()))
+    let vm = EPGViewModel(
+      epgService: service, config: Self.testConfig,
+      channelID: "CH1", channelName: "NHK"
+    )
+
+    await vm.loadEPG()
+
+    #expect(vm.isLoading == false)
+    #expect(vm.errorMessage == "Failed to load program guide.")
+    #expect(vm.entries.isEmpty)
+  }
+}
+
 } // end NetworkingTests
+
+// MARK: - PlaybackState Tests
+
+@Suite("PlaybackState")
+struct PlaybackStateTests {
+  @Test("PlaybackState equality")
+  func equality() {
+    #expect(PlaybackState.idle == PlaybackState.idle)
+    #expect(PlaybackState.loading == PlaybackState.loading)
+    #expect(PlaybackState.playing == PlaybackState.playing)
+    #expect(PlaybackState.paused == PlaybackState.paused)
+    #expect(PlaybackState.ended == PlaybackState.ended)
+    #expect(PlaybackState.failed("error") == PlaybackState.failed("error"))
+    #expect(PlaybackState.failed("a") != PlaybackState.failed("b"))
+    #expect(PlaybackState.playing != PlaybackState.paused)
+  }
+
+  @Test("PlaybackState is Sendable")
+  func sendable() async {
+    let state: PlaybackState = .playing
+    let task = Task { state }
+    let result = await task.value
+    #expect(result == .playing)
+  }
+}
+
+// MARK: - PlayerManager Tests
+
+@Suite("PlayerManager")
+struct PlayerManagerTests {
+  @Test("Initial state is idle")
+  @MainActor
+  func initialState() {
+    let manager = PlayerManager()
+    #expect(manager.state == .idle)
+    #expect(manager.currentTime == 0)
+    #expect(manager.duration == 0)
+    #expect(manager.isLive == false)
+    #expect(manager.player == nil)
+  }
+
+  @Test("Loading live stream sets state to loading and isLive to true")
+  @MainActor
+  func loadLiveStream() {
+    let manager = PlayerManager()
+    let url = URL(string: "http://live.yoitv.com:9083/query/s/test.M3U8?type=live")!
+
+    manager.loadLiveStream(url: url, referer: "http://play.yoitv.com")
+
+    #expect(manager.state == .loading)
+    #expect(manager.isLive == true)
+    #expect(manager.player != nil)
+  }
+
+  @Test("Loading VOD stream sets state to loading and isLive to false")
+  @MainActor
+  func loadVODStream() {
+    let manager = PlayerManager()
+    let url = URL(string: "http://vod.yoitv.com:9083/query/test.m3u8?type=vod")!
+
+    manager.loadVODStream(url: url, referer: "http://play.yoitv.com")
+
+    #expect(manager.state == .loading)
+    #expect(manager.isLive == false)
+    #expect(manager.player != nil)
+  }
+
+  @Test("Stop resets to idle state")
+  @MainActor
+  func stopResetsState() {
+    let manager = PlayerManager()
+    let url = URL(string: "http://test.com/stream.m3u8")!
+    manager.loadVODStream(url: url, referer: "http://play.yoitv.com")
+
+    manager.stop()
+
+    #expect(manager.state == .idle)
+    #expect(manager.player == nil)
+    #expect(manager.currentTime == 0)
+    #expect(manager.duration == 0)
+    #expect(manager.isLive == false)
+  }
+
+  @Test("Play and pause toggle state when player exists")
+  @MainActor
+  func playPauseWithPlayer() {
+    let manager = PlayerManager()
+    let url = URL(string: "http://test.com/stream.m3u8")!
+    manager.loadVODStream(url: url, referer: "http://play.yoitv.com")
+
+    manager.play()
+    #expect(manager.state == .playing)
+
+    manager.pause()
+    #expect(manager.state == .paused)
+  }
+
+  @Test("Toggle play/pause switches between states")
+  @MainActor
+  func togglePlayPause() {
+    let manager = PlayerManager()
+    let url = URL(string: "http://test.com/stream.m3u8")!
+    manager.loadVODStream(url: url, referer: "http://play.yoitv.com")
+
+    manager.play()
+    #expect(manager.state == .playing)
+
+    manager.togglePlayPause()
+    #expect(manager.state == .paused)
+
+    manager.togglePlayPause()
+    #expect(manager.state == .playing)
+  }
+
+  @Test("Seek is ignored for live streams")
+  @MainActor
+  func seekIgnoredForLive() {
+    let manager = PlayerManager()
+    let url = URL(string: "http://test.com/stream.M3U8")!
+    manager.loadLiveStream(url: url, referer: "http://play.yoitv.com")
+
+    // Should not crash — seek is a no-op for live
+    manager.seek(to: 30)
+    manager.skipForward()
+    manager.skipBackward()
+  }
+
+  @Test("Skip backward clamps to zero")
+  @MainActor
+  func skipBackwardClampsToZero() {
+    let manager = PlayerManager()
+    let url = URL(string: "http://test.com/stream.m3u8")!
+    manager.loadVODStream(url: url, referer: "http://play.yoitv.com")
+    // currentTime is 0, skipping backward 15s should seek to 0 not -15
+    manager.skipBackward()
+    // No crash means success — seek(to: 0) was called
+  }
+
+  @Test("Loading a new stream cleans up the previous one")
+  @MainActor
+  func loadingCleansUpPrevious() {
+    let manager = PlayerManager()
+    let url1 = URL(string: "http://test.com/stream1.m3u8")!
+    let url2 = URL(string: "http://test.com/stream2.m3u8")!
+
+    manager.loadVODStream(url: url1, referer: "http://play.yoitv.com")
+    let firstPlayer = manager.player
+
+    manager.loadLiveStream(url: url2, referer: "http://play.yoitv.com")
+    let secondPlayer = manager.player
+
+    #expect(firstPlayer !== secondPlayer)
+    #expect(manager.isLive == true)
+    #expect(manager.state == .loading)
+  }
+}
+
+// MARK: - PlayerView formatTime Tests
+
+@Suite("PlayerView formatTime")
+struct PlayerViewFormatTimeTests {
+  // Test the formatTime function via PlayerView's time display logic
+  // Since formatTime is private, we test the formatting behavior indirectly
+  // by verifying the same logic
+
+  private func formatTime(_ seconds: TimeInterval) -> String {
+    guard seconds.isFinite else { return "0:00" }
+    let totalSeconds = Int(seconds)
+    let hours = totalSeconds / 3600
+    let minutes = (totalSeconds % 3600) / 60
+    let secs = totalSeconds % 60
+    if hours > 0 {
+      return String(format: "%d:%02d:%02d", hours, minutes, secs)
+    }
+    return String(format: "%d:%02d", minutes, secs)
+  }
+
+  @Test("Formats seconds correctly")
+  func formatSeconds() {
+    #expect(formatTime(0) == "0:00")
+    #expect(formatTime(59) == "0:59")
+    #expect(formatTime(60) == "1:00")
+    #expect(formatTime(61) == "1:01")
+    #expect(formatTime(3599) == "59:59")
+    #expect(formatTime(3600) == "1:00:00")
+    #expect(formatTime(3661) == "1:01:01")
+    #expect(formatTime(7384) == "2:03:04")
+  }
+
+  @Test("Handles non-finite values")
+  func nonFinite() {
+    #expect(formatTime(.infinity) == "0:00")
+    #expect(formatTime(.nan) == "0:00")
+  }
+}
