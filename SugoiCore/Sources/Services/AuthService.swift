@@ -120,8 +120,8 @@ public actor AuthService {
       return nil
     }
 
-    // Build a session from stored values — we don't have expiry info,
-    // so try a refresh immediately
+    // Return the stored session immediately — don't block on a network
+    // refresh. The auto-refresh timer will get fresh tokens in the background.
     let restoredSession = Session(
       accessToken: accessToken,
       refreshToken: refreshToken,
@@ -129,19 +129,7 @@ public actor AuthService {
       config: config
     )
     self.session = restoredSession
-
-    // Try refreshing to get a fresh access token
-    do {
-      return try await refreshTokens()
-    } catch AuthError.sessionExpired {
-      // Server explicitly revoked the token (AUTH response).
-      // logout() was already called inside refreshTokens().
-      return nil
-    } catch {
-      // Network error or other transient failure — keep the restored session.
-      // The existing access token may still work.
-      return restoredSession
-    }
+    return restoredSession
   }
 
   // MARK: - Logout

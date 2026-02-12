@@ -18,6 +18,9 @@ public struct SugoiTVRootView: View {
       }
     }
     .task { await appState.restoreSession() }
+    #if os(macOS)
+    .toolbarVisibility(.hidden, for: .windowToolbar)
+    #endif
   }
 
   private var loginView: some View {
@@ -31,7 +34,7 @@ public struct SugoiTVRootView: View {
   }
 }
 
-/// Video-first layout: player fills the window, channel guide is a floating overlay
+/// Video-first layout: player fills the window, channel guide slides in as a sidebar
 private struct AuthenticatedContainer: View {
   let appState: AppState
   let session: AuthService.Session
@@ -40,6 +43,8 @@ private struct AuthenticatedContainer: View {
   @State private var selectedChannel: ChannelDTO?
   @State private var showingGuide = false
   @AppStorage("lastChannelId") private var lastChannelId: String = ""
+
+  private let sidebarWidth: CGFloat = 340
 
   init(appState: AppState, session: AuthService.Session) {
     self.appState = appState
@@ -53,67 +58,77 @@ private struct AuthenticatedContainer: View {
   var body: some View {
     ZStack(alignment: .topLeading) {
       PlayerView(playerManager: playerManager, isLive: playerManager.isLive)
-        .ignoresSafeArea()
         .allowsHitTesting(false)
 
-      guideButton
+      if showingGuide {
+        // Dimming scrim behind sidebar
+        Color.black.opacity(0.3)
+          .onTapGesture { withAnimation { showingGuide = false } }
+
+        sidebar
+          .transition(.move(edge: .leading))
+      }
+
+      if !showingGuide {
+        guideButton
+      }
     }
-      .sheet(isPresented: $showingGuide) {
-        channelGuide
+    .ignoresSafeArea()
+    .task {
+      await channelListVM.loadChannels()
+      autoSelectChannel()
+    }
+    .onChange(of: selectedChannel) { _, channel in
+      if let channel {
+        playChannel(channel)
       }
-      .task {
-        await channelListVM.loadChannels()
-        autoSelectChannel()
-      }
-      .onChange(of: selectedChannel) { _, channel in
-        if let channel {
-          playChannel(channel)
-        }
-      }
+    }
   }
 
   private var guideButton: some View {
     Button {
-      showingGuide = true
+      withAnimation { showingGuide = true }
     } label: {
-      Image(systemName: "list.bullet")
-        .font(.title3)
-        .padding(10)
+      Image(systemName: "sidebar.leading")
+        .font(.title)
     }
-    .buttonStyle(.plain)
-    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
+    .buttonStyle(.glass)
     .padding()
     .accessibilityIdentifier("channelGuideButton")
   }
 
-  private var channelGuide: some View {
-    NavigationStack {
+  private var sidebar: some View {
+    VStack(spacing: 0) {
+      Button {
+        withAnimation { showingGuide = false }
+      } label: {
+        Image(systemName: "sidebar.leading")
+          .font(.title)
+      }
+      .buttonStyle(.glass)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .padding()
+
       ChannelListView(
         viewModel: channelListVM,
         onSelectChannel: { channel in
           selectedChannel = channel
-          showingGuide = false
+          withAnimation { showingGuide = false }
         }
       )
-      .navigationTitle("Channel Guide")
-      #if !os(macOS)
-      .navigationBarTitleDisplayMode(.inline)
-      #endif
-      .toolbar {
-        ToolbarItem(placement: .cancellationAction) {
-          Button("Close") { showingGuide = false }
-        }
-        ToolbarItem(placement: .destructiveAction) {
-          Button("Sign Out") {
-            Task { await appState.logout() }
-          }
-          .accessibilityIdentifier("signOutButton")
-        }
+
+      Divider()
+
+      Button("Sign Out") {
+        Task { await appState.logout() }
       }
+      .accessibilityIdentifier("signOutButton")
+      .padding()
+      .frame(maxWidth: .infinity, alignment: .leading)
     }
-    #if os(macOS)
-    .frame(minWidth: 350, idealWidth: 400, minHeight: 400, idealHeight: 600)
-    #endif
+    .frame(width: sidebarWidth)
+    .frame(maxHeight: .infinity)
+    .background(.ultraThinMaterial)
   }
 
   private func autoSelectChannel() {

@@ -9,16 +9,30 @@ final class SugoiTVUITests: XCTestCase {
     app.launch()
 
     let guideButton = app.buttons["channelGuideButton"]
-    if !guideButton.waitForExistence(timeout: 5) {
+    let customerID = app.textFields["Customer ID"]
+
+    // App may restore a persisted session or show login.
+    // Poll for either state for up to 30s.
+    var ready = false
+    for i in 0..<30 {
+      if guideButton.exists || customerID.exists { ready = true; break }
+      if i == 5 {
+        print("Poll \(i): guideButton=\(guideButton.exists) customerID=\(customerID.exists)")
+        print(app.debugDescription)
+      }
+      Thread.sleep(forTimeInterval: 1)
+    }
+    XCTAssertTrue(ready, "App should show either guide button or login screen")
+
+    if !guideButton.exists {
       login(app: app, user: user, pass: pass)
       XCTAssertTrue(guideButton.waitForExistence(timeout: 15), "Guide button should appear after login")
     }
 
     guideButton.tap()
 
-    // Look for the Close button that appears in the channel guide sheet toolbar
-    let closeButton = app.buttons["Close"]
-    XCTAssertTrue(closeButton.waitForExistence(timeout: 5), "Channel Guide sheet should open with Close button")
+    let signOut = app.buttons["signOutButton"]
+    XCTAssertTrue(signOut.waitForExistence(timeout: 5), "Channel guide sidebar should open with Sign Out button")
   }
 
   // MARK: - Helpers

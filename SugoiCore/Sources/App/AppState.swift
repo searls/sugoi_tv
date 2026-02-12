@@ -29,7 +29,16 @@ public final class AppState {
     isRestoringSession = true
     session = try? await authService.restoreSession()
     if session != nil {
-      await authService.startAutoRefresh()
+      do {
+        session = try await authService.refreshTokens()
+        await authService.startAutoRefresh()
+      } catch AuthError.sessionExpired {
+        // Server revoked the token — logout was already called
+        session = nil
+      } catch {
+        // Network error — keep using stored session with stale tokens
+        await authService.startAutoRefresh()
+      }
     }
     isRestoringSession = false
   }

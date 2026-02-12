@@ -41,12 +41,12 @@ run_ui() {
   local dest
   dest="$(resolve_destination "$plat")"
   echo "==> Running UI tests on $plat..."
-  xcodebuild test \
+  set -o pipefail && xcodebuild test \
     -workspace "$PROJECT_DIR/SugoiTV.xcworkspace" \
     -scheme SugoiTV \
     -destination "$dest" \
     -only-testing:SugoiTVUITests \
-    2>&1
+    2>&1 | xcbeautify
 }
 
 case "$MODE" in

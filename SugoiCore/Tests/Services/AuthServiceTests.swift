@@ -113,57 +113,8 @@ struct AuthServiceTests {
 
   // MARK: - Restore session
 
-  @Test("Restore session refreshes tokens and returns new session")
-  func restoreRefreshesTokens() async throws {
-    let keychain = MockKeychainService()
-    try await keychain.storeSession(
-      accessToken: "old_token", refreshToken: "old_refresh",
-      cid: "AABC538835997",
-      productConfigJSON: #"{"vms_host":"http://live.yoitv.com:9083","vms_vod_host":"http://vod.yoitv.com:9083","vms_uid":"UID1","vms_live_cid":"CID1","vms_referer":"http://play.yoitv.com","epg_days":30,"single":"https://crm.yoitv.com/single.sjs"}"#
-    )
-
-    let mock = MockHTTPSession()
-    mock.requestHandler = { request in
-      let response = HTTPURLResponse(
-        url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil
-      )!
-      return (response, Data(Self.loginJSON.utf8))
-    }
-
-    let auth = AuthService(keychain: keychain, apiClient: APIClient(session: mock.session))
-    let session = try await auth.restoreSession()
-
-    #expect(session != nil)
-    #expect(session?.accessToken == "test_access_token+/==")
-  }
-
-  @Test("Restore session clears keychain on AUTH revocation")
-  func restoreAuthRevocation() async throws {
-    let keychain = MockKeychainService()
-    try await keychain.storeSession(
-      accessToken: "old_token", refreshToken: "old_refresh",
-      cid: "AABC538835997",
-      productConfigJSON: #"{"vms_host":"http://live.yoitv.com:9083","vms_vod_host":"http://vod.yoitv.com:9083","vms_uid":"UID1","vms_live_cid":"CID1","vms_referer":"http://play.yoitv.com","epg_days":30,"single":"https://crm.yoitv.com/single.sjs"}"#
-    )
-
-    let mock = MockHTTPSession()
-    let authJSON = #"{"access_token":"","token_type":"","expires_in":0,"refresh_token":"","expired":false,"disabled":false,"confirmed":true,"cid":"","type":"","trial":0,"create_time":0,"expire_time":0,"product_config":"{}","server_time":0,"code":"AUTH"}"#
-    mock.requestHandler = { request in
-      let response = HTTPURLResponse(
-        url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil
-      )!
-      return (response, Data(authJSON.utf8))
-    }
-
-    let auth = AuthService(keychain: keychain, apiClient: APIClient(session: mock.session))
-    let session = try await auth.restoreSession()
-
-    #expect(session == nil)
-    #expect(try await keychain.accessToken() == nil)
-  }
-
-  @Test("Restore session keeps stored session on network failure")
-  func restoreKeepsSessionOnNetworkError() async throws {
+  @Test("Restore returns stored session from keychain without network call")
+  func restoreFromKeychain() async throws {
     let keychain = MockKeychainService()
     try await keychain.storeSession(
       accessToken: "stored_token", refreshToken: "stored_refresh",
@@ -172,17 +123,18 @@ struct AuthServiceTests {
     )
 
     let mock = MockHTTPSession()
-    mock.requestHandler = { request in
-      throw URLError(.notConnectedToInternet)
+    mock.requestHandler = { _ in
+      Issue.record("restoreSession should not make network requests")
+      throw URLError(.badURL)
     }
 
     let auth = AuthService(keychain: keychain, apiClient: APIClient(session: mock.session))
     let session = try await auth.restoreSession()
 
-    // Should return the restored session, not nil
     #expect(session != nil)
     #expect(session?.accessToken == "stored_token")
-    // Keychain should NOT be cleared
+    #expect(session?.cid == "AABC538835997")
+    // Keychain should be untouched
     #expect(try await keychain.accessToken() == "stored_token")
   }
 
