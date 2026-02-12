@@ -24,6 +24,21 @@ public final class AppState {
     self.epgService = EPGService(apiClient: apiClient)
   }
 
+  /// Testable initializer that accepts pre-built services
+  public init(
+    keychain: KeychainService = KeychainService(),
+    apiClient: APIClient,
+    authService: AuthService,
+    channelService: ChannelService,
+    epgService: EPGService
+  ) {
+    self.keychain = keychain
+    self.apiClient = apiClient
+    self.authService = authService
+    self.channelService = channelService
+    self.epgService = epgService
+  }
+
   /// Attempt to restore a previous session from the Keychain
   public func restoreSession() async {
     isRestoringSession = true

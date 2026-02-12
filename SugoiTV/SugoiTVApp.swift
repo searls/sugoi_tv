@@ -8,9 +8,13 @@ struct SugoiTVApp: App {
   var body: some Scene {
     WindowGroup {
       SugoiTVRootView(appState: appState)
+        #if os(macOS)
+        .background(WindowAccessor())
+        #endif
     }
     #if os(macOS)
     .windowStyle(.hiddenTitleBar)
+    .defaultSize(width: 960, height: 540)
     #endif
   }
 }
@@ -24,6 +28,15 @@ private struct WindowAccessor: NSViewRepresentable {
     let view = NSView()
     DispatchQueue.main.async {
       if let window = view.window {
+        // Snap the current frame to 16:9 (keep width, adjust height)
+        var frame = window.frame
+        let contentRect = window.contentRect(forFrameRect: frame)
+        let targetHeight = contentRect.width * 9.0 / 16.0
+        let chromeHeight = frame.height - contentRect.height
+        frame.size.height = targetHeight + chromeHeight
+        window.setFrame(frame, display: true)
+
+        // Lock aspect ratio for all future resizes
         window.contentAspectRatio = NSSize(width: 16, height: 9)
       }
     }
