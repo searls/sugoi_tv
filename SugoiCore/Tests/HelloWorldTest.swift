@@ -898,9 +898,7 @@ struct APIClientTests {
   }
 }
 
-} // end NetworkingTests
-
-// MARK: - StreamURLBuilder Tests
+// (AuthService, ChannelService, EPGService tests are below, also inside NetworkingTests)
 
 @Suite("StreamURLBuilder")
 struct StreamURLBuilderTests {
@@ -1031,3 +1029,286 @@ struct StreamURLBuilderTests {
     #expect(vodURL!.absoluteString.hasPrefix("http://record-custom:9083"))
   }
 }
+
+// MARK: - AuthService Tests
+
+@Suite("AuthService")
+struct AuthServiceTests {
+  static let loginJSON = """
+    {
+      "access_token": "test_access_token+/==",
+      "token_type": "bearer",
+      "expires_in": 1770770216,
+      "refresh_token": "test_refresh_token",
+      "expired": false,
+      "disabled": false,
+      "confirmed": true,
+      "cid": "AABC538835997",
+      "type": "tvum_cid",
+      "trial": 0,
+      "create_time": 1652403783,
+      "expire_time": 1782959503,
+      "product_config": "{\\"vms_host\\":\\"http://live.yoitv.com:9083\\",\\"vms_vod_host\\":\\"http://vod.yoitv.com:9083\\",\\"vms_uid\\":\\"UID1\\",\\"vms_live_cid\\":\\"CID1\\",\\"vms_referer\\":\\"http://play.yoitv.com\\",\\"epg_days\\":30,\\"single\\":\\"https://crm.yoitv.com/single.sjs\\"}",
+      "server_time": 1770755816,
+      "code": "OK"
+    }
+    """
+
+  @Test("Login stores session in Keychain and returns Session")
+  func loginSuccess() async throws {
+    MockURLProtocol.reset()
+    MockURLProtocol.requestHandler = { request in
+      #expect(request.url!.absoluteString.contains("logon.sjs"))
+      let response = HTTPURLResponse(
+        url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil
+      )!
+      return (response, Data(Self.loginJSON.utf8))
+    }
+
+    let keychain = MockKeychainService()
+    let client = APIClient(session: .mock())
+    let auth = AuthService(keychain: keychain, apiClient: client)
+
+    let session = try await auth.login(cid: "testuser", password: "testpass")
+
+    #expect(session.accessToken == "test_access_token+/==")
+    #expect(session.cid == "AABC538835997")
+    #expect(session.productConfig.vmsHost == "http://live.yoitv.com:9083")
+
+    // Verify Keychain was updated
+    #expect(try await keychain.accessToken() == "test_access_token+/==")
+    #expect(try await keychain.refreshToken() == "test_refresh_token")
+    #expect(try await keychain.cid() == "AABC538835997")
+  }
+
+  @Test("Login with non-OK code throws loginFailed")
+  func loginFailure() async {
+    MockURLProtocol.reset()
+    let failJSON = #"{"access_token":"","token_type":"","expires_in":0,"refresh_token":"","expired":false,"disabled":false,"confirmed":true,"cid":"","type":"","trial":0,"create_time":0,"expire_time":0,"product_config":"{}","server_time":0,"code":"INVALID"}"#
+    MockURLProtocol.requestHandler = { request in
+      let response = HTTPURLResponse(
+        url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil
+      )!
+      return (response, Data(failJSON.utf8))
+    }
+
+    let auth = AuthService(keychain: MockKeychainService(), apiClient: APIClient(session: .mock()))
+    do {
+      _ = try await auth.login(cid: "bad", password: "bad")
+      #expect(Bool(false), "Should have thrown")
+    } catch let error as AuthError {
+      #expect(error == .loginFailed(code: "INVALID"))
+    } catch {
+      #expect(Bool(false), "Wrong error: \(error)")
+    }
+  }
+
+  @Test("Refresh with AUTH code clears session")
+  func refreshAuthFailure() async throws {
+    MockURLProtocol.reset()
+    var callCount = 0
+    MockURLProtocol.requestHandler = { request in
+      callCount += 1
+      let json: String
+      if callCount == 1 {
+        json = Self.loginJSON
+      } else {
+        json = #"{"access_token":"","token_type":"","expires_in":0,"refresh_token":"","expired":false,"disabled":false,"confirmed":true,"cid":"","type":"","trial":0,"create_time":0,"expire_time":0,"product_config":"{}","server_time":0,"code":"AUTH"}"#
+      }
+      let response = HTTPURLResponse(
+        url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil
+      )!
+      return (response, Data(json.utf8))
+    }
+
+    let keychain = MockKeychainService()
+    let client = APIClient(session: .mock())
+    let auth = AuthService(keychain: keychain, apiClient: client)
+
+    _ = try await auth.login(cid: "user", password: "pass")
+
+    do {
+      _ = try await auth.refreshTokens()
+      #expect(Bool(false), "Should have thrown")
+    } catch let error as AuthError {
+      #expect(error == .sessionExpired)
+    }
+
+    // Session should be cleared
+    let session = await auth.session
+    #expect(session == nil)
+    #expect(try await keychain.accessToken() == nil)
+  }
+
+  @Test("Logout clears session and Keychain")
+  func logout() async throws {
+    MockURLProtocol.reset()
+    MockURLProtocol.requestHandler = { request in
+      let response = HTTPURLResponse(
+        url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil
+      )!
+      return (response, Data(Self.loginJSON.utf8))
+    }
+
+    let keychain = MockKeychainService()
+    let auth = AuthService(keychain: keychain, apiClient: APIClient(session: .mock()))
+
+    _ = try await auth.login(cid: "user", password: "pass")
+    await auth.logout()
+
+    let session = await auth.session
+    #expect(session == nil)
+    #expect(try await keychain.accessToken() == nil)
+  }
+}
+
+// MARK: - ChannelService Tests
+
+@Suite("ChannelService")
+struct ChannelServiceTests {
+  static let channelsJSON = """
+    {
+      "result": [
+        {"id": "CH1", "name": "NHK", "tags": "$LIVE_CAT_関東", "no": 1, "playpath": "/query/s/nhk", "running": 1, "timeshift": 1},
+        {"id": "CH2", "name": "TBS", "tags": "$LIVE_CAT_関東", "no": 2, "playpath": "/query/s/tbs"},
+        {"id": "CH3", "name": "MBS", "tags": "$LIVE_CAT_関西", "no": 3, "playpath": "/query/s/mbs"},
+        {"id": "CH4", "name": "BS11", "tags": "$LIVE_CAT_BS", "no": 4, "playpath": "/query/s/bs11"}
+      ],
+      "code": "OK"
+    }
+    """
+
+  @Test("Fetches and parses channel list")
+  func fetchChannels() async throws {
+    MockURLProtocol.reset()
+    MockURLProtocol.requestHandler = { _ in
+      let response = HTTPURLResponse(
+        url: URL(string: "http://test.com")!, statusCode: 200, httpVersion: nil, headerFields: nil
+      )!
+      return (response, Data(Self.channelsJSON.utf8))
+    }
+
+    let config = ProductConfig(
+      vmsHost: "http://live.yoitv.com:9083",
+      vmsVodHost: nil, vmsUid: "UID", vmsLiveCid: "CID",
+      vmsReferer: "http://play.yoitv.com", epgDays: nil, single: nil,
+      vmsChannelListHost: nil, vmsLiveHost: nil, vmsRecordHost: nil, vmsLiveUid: nil
+    )
+
+    let service = ChannelService(apiClient: APIClient(session: .mock()))
+    let channels = try await service.fetchChannels(config: config)
+
+    #expect(channels.count == 4)
+    #expect(channels[0].name == "NHK")
+    #expect(channels[0].primaryCategory == "関東")
+  }
+
+  @Test("Groups channels by category in correct order")
+  func groupByCategory() {
+    let channels = [
+      ChannelDTO(id: "1", uid: nil, name: "NHK", description: nil, tags: "$LIVE_CAT_関東", no: 1, timeshift: nil, timeshiftLen: nil, epgKeepDays: nil, state: nil, running: nil, playpath: "/a", liveType: nil),
+      ChannelDTO(id: "2", uid: nil, name: "MBS", description: nil, tags: "$LIVE_CAT_関西", no: 2, timeshift: nil, timeshiftLen: nil, epgKeepDays: nil, state: nil, running: nil, playpath: "/b", liveType: nil),
+      ChannelDTO(id: "3", uid: nil, name: "BS11", description: nil, tags: "$LIVE_CAT_BS", no: 3, timeshift: nil, timeshiftLen: nil, epgKeepDays: nil, state: nil, running: nil, playpath: "/c", liveType: nil),
+      ChannelDTO(id: "4", uid: nil, name: "Other", description: nil, tags: nil, no: 4, timeshift: nil, timeshiftLen: nil, epgKeepDays: nil, state: nil, running: nil, playpath: "/d", liveType: nil),
+    ]
+
+    let groups = ChannelService.groupByCategory(channels)
+    #expect(groups.count == 4)
+    #expect(groups[0].category == "関東")
+    #expect(groups[1].category == "関西")
+    #expect(groups[2].category == "BS")
+    #expect(groups[3].category == "Others")
+  }
+}
+
+// MARK: - EPGService Tests
+
+@Suite("EPGService")
+struct EPGServiceTests {
+  static let epgJSON = """
+    {
+      "result": [{
+        "id": "CH1",
+        "name": "NHK",
+        "record_epg": "[{\\"time\\":1000,\\"title\\":\\"Past Show\\",\\"path\\":\\"/query/past\\"},{\\"time\\":2000,\\"title\\":\\"Current Show\\",\\"path\\":\\"\\"},{\\"time\\":9999999999,\\"title\\":\\"Future Show\\",\\"path\\":\\"\\"}]"
+      }],
+      "code": "OK"
+    }
+    """
+
+  @Test("Fetches and parses EPG entries")
+  func fetchEPG() async throws {
+    MockURLProtocol.reset()
+    MockURLProtocol.requestHandler = { _ in
+      let response = HTTPURLResponse(
+        url: URL(string: "http://test.com")!, statusCode: 200, httpVersion: nil, headerFields: nil
+      )!
+      return (response, Data(Self.epgJSON.utf8))
+    }
+
+    let config = ProductConfig(
+      vmsHost: "http://live.yoitv.com:9083",
+      vmsVodHost: nil, vmsUid: "UID", vmsLiveCid: "CID",
+      vmsReferer: "http://play.yoitv.com", epgDays: 30, single: nil,
+      vmsChannelListHost: nil, vmsLiveHost: nil, vmsRecordHost: nil, vmsLiveUid: nil
+    )
+
+    let service = EPGService(apiClient: APIClient(session: .mock()))
+    let entries = try await service.fetchEPG(config: config, channelID: "CH1")
+
+    #expect(entries.count == 3)
+    #expect(entries[0].title == "Past Show")
+    #expect(entries[0].hasVOD == true)
+    #expect(entries[1].hasVOD == false)
+  }
+
+  @Test("Finds current program by timestamp")
+  func currentProgram() {
+    let entries = [
+      EPGEntryDTO(time: 1000, title: "Show A", path: "/a"),
+      EPGEntryDTO(time: 2000, title: "Show B", path: ""),
+      EPGEntryDTO(time: 3000, title: "Show C", path: ""),
+    ]
+
+    let current = EPGService.currentProgram(in: entries, at: Date(timeIntervalSince1970: 2500))
+    #expect(current?.title == "Show B")
+
+    let first = EPGService.currentProgram(in: entries, at: Date(timeIntervalSince1970: 1500))
+    #expect(first?.title == "Show A")
+
+    let before = EPGService.currentProgram(in: entries, at: Date(timeIntervalSince1970: 500))
+    #expect(before == nil)
+  }
+
+  @Test("Finds upcoming programs")
+  func upcomingPrograms() {
+    let entries = [
+      EPGEntryDTO(time: 1000, title: "Past", path: ""),
+      EPGEntryDTO(time: 2000, title: "Now", path: ""),
+      EPGEntryDTO(time: 3000, title: "Soon", path: ""),
+      EPGEntryDTO(time: 4000, title: "Later", path: ""),
+    ]
+
+    let upcoming = EPGService.upcomingPrograms(
+      in: entries, after: Date(timeIntervalSince1970: 2500), limit: 2
+    )
+    #expect(upcoming.count == 2)
+    #expect(upcoming[0].title == "Soon")
+    #expect(upcoming[1].title == "Later")
+  }
+
+  @Test("Finds VOD-available past programs")
+  func vodAvailable() {
+    let entries = [
+      EPGEntryDTO(time: 1000, title: "With VOD", path: "/vod"),
+      EPGEntryDTO(time: 2000, title: "No VOD", path: ""),
+      EPGEntryDTO(time: 9999999999, title: "Future", path: "/future"),
+    ]
+
+    let vod = EPGService.vodAvailable(in: entries, before: Date(timeIntervalSince1970: 5000))
+    #expect(vod.count == 1)
+    #expect(vod[0].title == "With VOD")
+  }
+}
+
+} // end NetworkingTests

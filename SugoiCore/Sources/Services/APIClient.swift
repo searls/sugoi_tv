@@ -14,6 +14,12 @@ public protocol APIClientProtocol: Sendable {
   ) async throws -> Response
 }
 
+extension APIClientProtocol {
+  public func get<T: Decodable & Sendable>(url: URL) async throws -> T {
+    try await get(url: url, headers: [:])
+  }
+}
+
 // MARK: - Errors
 
 public enum APIError: Error, Sendable, Equatable {
