@@ -671,9 +671,12 @@ struct KeychainServiceTests {
   }
 }
 
-// MARK: - MockURLProtocol Tests
+// MARK: - Networking Tests (serialized — shared MockURLProtocol state)
 
-@Suite("MockURLProtocol", .serialized)
+@Suite("Networking", .serialized)
+struct NetworkingTests {
+
+@Suite("MockURLProtocol")
 struct MockURLProtocolTests {
   @Test("Intercepts requests and returns mock response")
   func interceptsRequests() async throws {
@@ -728,5 +731,303 @@ struct MockURLProtocolTests {
       let nsError = error as NSError
       #expect(nsError.domain.contains("MockURLProtocolError"))
     }
+  }
+}
+
+// MARK: - APIClient Tests
+
+@Suite("YoiTVEndpoints")
+struct YoiTVEndpointsTests {
+  @Test("Login URL contains all required parameters")
+  func loginURL() {
+    let url = YoiTVEndpoints.loginURL(cid: "AABC538835997", password: "testpass", deviceID: "AABB1122")
+    let str = url.absoluteString
+
+    #expect(str.contains("crm.yoitv.com/logon.sjs"))
+    #expect(str.contains("from_app=1"))
+    #expect(str.contains("cid=AABC538835997"))
+    #expect(str.contains("password=testpass"))
+    #expect(str.contains("app_id="))
+    #expect(str.contains("device_id=AABB1122"))
+  }
+
+  @Test("Refresh URL contains all required parameters")
+  func refreshURL() {
+    let url = YoiTVEndpoints.refreshURL(refreshToken: "refresh123", cid: "CID1", deviceID: "DEV1")
+    let str = url.absoluteString
+
+    #expect(str.contains("crm.yoitv.com/refresh.sjs"))
+    #expect(str.contains("refresh_token=refresh123"))
+    #expect(str.contains("cid=CID1"))
+    #expect(str.contains("device_id=DEV1"))
+  }
+
+  @Test("Channel list URL uses config hosts")
+  func channelListURL() {
+    let config = ProductConfig(
+      vmsHost: "http://live.yoitv.com:9083",
+      vmsVodHost: nil, vmsUid: "UID1", vmsLiveCid: "CID1",
+      vmsReferer: "http://play.yoitv.com", epgDays: 30, single: nil,
+      vmsChannelListHost: nil, vmsLiveHost: nil, vmsRecordHost: nil, vmsLiveUid: nil
+    )
+    let url = YoiTVEndpoints.channelListURL(config: config)
+    let str = url.absoluteString
+
+    #expect(str.hasPrefix("http://live.yoitv.com:9083/api"))
+    #expect(str.contains("action=listLives"))
+    #expect(str.contains("cid=CID1"))
+    #expect(str.contains("uid=UID1"))
+    #expect(str.contains("no_epg=1"))
+    #expect(str.contains("page_size=200"))
+  }
+
+  @Test("EPG URL includes channel ID and no_epg=0")
+  func epgURL() {
+    let config = ProductConfig(
+      vmsHost: "http://live.yoitv.com:9083",
+      vmsVodHost: nil, vmsUid: "UID1", vmsLiveCid: "CID1",
+      vmsReferer: "http://play.yoitv.com", epgDays: 30, single: nil,
+      vmsChannelListHost: nil, vmsLiveHost: nil, vmsRecordHost: nil, vmsLiveUid: nil
+    )
+    let url = YoiTVEndpoints.epgURL(config: config, channelID: "CHAN123")
+    let str = url.absoluteString
+
+    #expect(str.contains("vid=CHAN123"))
+    #expect(str.contains("no_epg=0"))
+    #expect(str.contains("epg_days=30"))
+  }
+
+  @Test("Single play URL formats correctly")
+  func singlePlayURL() {
+    let url = YoiTVEndpoints.singlePlayURL(
+      singleEndpoint: "https://crm.yoitv.com/single.sjs",
+      ua: "ios", own: true, accessToken: "token123"
+    )
+    let str = url.absoluteString
+
+    #expect(str.contains("single.sjs"))
+    #expect(str.contains("ua=ios"))
+    #expect(str.contains("own=true"))
+    #expect(str.contains("access_token=token123"))
+  }
+
+  @Test("Bearer headers format correctly")
+  func bearerHeaders() {
+    let headers = YoiTVEndpoints.bearerHeaders(accessToken: "mytoken")
+    #expect(headers["Authorization"] == "Bearer mytoken")
+  }
+
+  @Test("CRM URL builds with controller and action")
+  func crmURL() {
+    let url = YoiTVEndpoints.crmURL(controller: "tvum_favorite", action: "listLive")
+    let str = url.absoluteString
+    #expect(str.contains("crm.yoitv.com/tvum"))
+    #expect(str.contains("controller=tvum_favorite"))
+    #expect(str.contains("action=listLive"))
+  }
+}
+
+@Suite("APIClient")
+struct APIClientTests {
+  @Test("GET request decodes JSON response")
+  func getRequest() async throws {
+    MockURLProtocol.reset()
+    MockURLProtocol.requestHandler = { _ in
+      let json = #"{"code":"OK","result":[]}"#
+      let response = HTTPURLResponse(
+        url: URL(string: "https://example.com")!,
+        statusCode: 200, httpVersion: nil, headerFields: nil
+      )!
+      return (response, Data(json.utf8))
+    }
+
+    let client = APIClient(session: .mock())
+    let result: ChannelListResponse = try await client.get(url: URL(string: "https://example.com/api")!)
+    #expect(result.code == "OK")
+    #expect(result.result.isEmpty)
+  }
+
+  @Test("GET request throws on HTTP error")
+  func getHTTPError() async {
+    MockURLProtocol.reset()
+    MockURLProtocol.requestHandler = { _ in
+      let response = HTTPURLResponse(
+        url: URL(string: "https://example.com")!,
+        statusCode: 403, httpVersion: nil, headerFields: nil
+      )!
+      return (response, Data())
+    }
+
+    let client = APIClient(session: .mock())
+    do {
+      let _: ChannelListResponse = try await client.get(url: URL(string: "https://example.com")!)
+      #expect(Bool(false), "Should have thrown")
+    } catch let error as APIError {
+      #expect(error == .httpError(statusCode: 403))
+    } catch {
+      #expect(Bool(false), "Wrong error type: \(error)")
+    }
+  }
+
+  @Test("POST request sends JSON body and decodes response")
+  func postRequest() async throws {
+    MockURLProtocol.reset()
+    MockURLProtocol.requestHandler = { request in
+      // Verify Content-Type header
+      #expect(request.value(forHTTPHeaderField: "Content-Type") == "application/json")
+      // Verify Authorization header
+      #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer mytoken")
+      // Verify body is present
+      #expect(request.httpBody != nil || request.httpBodyStream != nil)
+
+      let json = #"{"code":"OK"}"#
+      let response = HTTPURLResponse(
+        url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil
+      )!
+      return (response, Data(json.utf8))
+    }
+
+    let client = APIClient(session: .mock())
+    let body = FavoriteLiveSyncRequest(updates: nil, removals: ["CH1"])
+    let result: FavoriteLiveListResponse = try await client.post(
+      url: URL(string: "https://crm.yoitv.com/tvum")!,
+      headers: YoiTVEndpoints.bearerHeaders(accessToken: "mytoken"),
+      body: body
+    )
+    #expect(result.code == "OK")
+  }
+}
+
+} // end NetworkingTests
+
+// MARK: - StreamURLBuilder Tests
+
+@Suite("StreamURLBuilder")
+struct StreamURLBuilderTests {
+  @Test("Live URL uses uppercase .M3U8")
+  func liveURLFormat() {
+    let url = StreamURLBuilder.liveStreamURL(
+      liveHost: "http://live.yoitv.com:9083",
+      playpath: "/query/s/Hqm-m7jqkFlA1CloJoaJZQ==",
+      accessToken: "testtoken"
+    )
+    #expect(url != nil)
+    let str = url!.absoluteString
+    #expect(str.contains(".M3U8"))
+    #expect(str.contains("type=live"))
+    #expect(str.contains("__cross_domain_user="))
+  }
+
+  @Test("VOD URL uses lowercase .m3u8")
+  func vodURLFormat() {
+    let url = StreamURLBuilder.vodStreamURL(
+      recordHost: "http://vod.yoitv.com:9083",
+      path: "/query/wtkmHz1XU-dOl-so_i2LJlsegL7gV3_laXirRbM5SSM=",
+      accessToken: "testtoken"
+    )
+    #expect(url != nil)
+    let str = url!.absoluteString
+    #expect(str.contains(".m3u8"))
+    #expect(!str.contains(".M3U8"))
+    #expect(str.contains("type=vod"))
+  }
+
+  @Test("Access token with +, /, = is percent-encoded")
+  func tokenEncoding() {
+    let token = "abc+def/ghi=jkl=="
+    let encoded = StreamURLBuilder.percentEncodeToken(token)
+
+    #expect(!encoded.contains("+"))
+    #expect(!encoded.contains("/"))
+    // = should be encoded
+    #expect(encoded.contains("%2B"))  // +
+    #expect(encoded.contains("%2F"))  // /
+    #expect(encoded.contains("%3D"))  // =
+  }
+
+  @Test("Live URL correctly encodes base64 access token")
+  func liveURLWithBase64Token() {
+    let url = StreamURLBuilder.liveStreamURL(
+      liveHost: "http://live.yoitv.com:9083",
+      playpath: "/query/s/test",
+      accessToken: "ZZVWXJbb+test/token=Krg=="
+    )
+    let str = url!.absoluteString
+    // Token special chars should be percent-encoded
+    #expect(!str.contains("+"))  // Should be %2B
+    #expect(str.contains("%2B"))
+    #expect(str.contains("%2F"))
+    #expect(str.contains("%3D"))
+  }
+
+  @Test("Favorite VOD URL uses dupVid when available")
+  func favoriteVodWithDupVid() {
+    let url = StreamURLBuilder.favoriteVodStreamURL(
+      vodHost: "http://vod.yoitv.com:9083",
+      vid: "originalVid",
+      dupVid: "duplicateVid",
+      accessToken: "token"
+    )
+    let str = url!.absoluteString
+    #expect(str.contains("/query/duplicateVid.m3u8"))
+    #expect(!str.contains("originalVid"))
+  }
+
+  @Test("Favorite VOD URL uses vid when dupVid is nil")
+  func favoriteVodWithoutDupVid() {
+    let url = StreamURLBuilder.favoriteVodStreamURL(
+      vodHost: "http://vod.yoitv.com:9083",
+      vid: "originalVid",
+      dupVid: nil,
+      accessToken: "token"
+    )
+    let str = url!.absoluteString
+    #expect(str.contains("/query/originalVid.m3u8"))
+  }
+
+  @Test("Thumbnail URL has no auth parameter")
+  func thumbnailURL() {
+    let url = StreamURLBuilder.thumbnailURL(
+      channelListHost: "http://live.yoitv.com:9083",
+      playpath: "/query/s/Hqm-m7jqkFlA1CloJoaJZQ=="
+    )
+    let str = url!.absoluteString
+    #expect(str.contains(".jpg"))
+    #expect(str.contains("thumbnail=thumbnail_small.jpg"))
+    #expect(!str.contains("__cross_domain_user"))
+  }
+
+  @Test("Asset options contain Referer header")
+  func assetOptions() {
+    let options = StreamURLBuilder.assetOptions(referer: "http://play.yoitv.com")
+    let headers = options["AVURLAssetHTTPHeaderFieldsKey"] as? [String: String]
+    #expect(headers?["Referer"] == "http://play.yoitv.com")
+  }
+
+  @Test("Stream URLs use hosts from ProductConfig")
+  func usesConfigHosts() {
+    let config = ProductConfig(
+      vmsHost: "http://live.yoitv.com:9083",
+      vmsVodHost: "http://vod.yoitv.com:9083",
+      vmsUid: "UID", vmsLiveCid: "CID",
+      vmsReferer: "http://play.yoitv.com",
+      epgDays: nil, single: nil,
+      vmsChannelListHost: nil, vmsLiveHost: "http://live-custom:9083",
+      vmsRecordHost: "http://record-custom:9083", vmsLiveUid: nil
+    )
+
+    let liveURL = StreamURLBuilder.liveStreamURL(
+      liveHost: config.liveHost,
+      playpath: "/query/s/test",
+      accessToken: "t"
+    )
+    #expect(liveURL!.absoluteString.hasPrefix("http://live-custom:9083"))
+
+    let vodURL = StreamURLBuilder.vodStreamURL(
+      recordHost: config.recordHost,
+      path: "/query/test",
+      accessToken: "t"
+    )
+    #expect(vodURL!.absoluteString.hasPrefix("http://record-custom:9083"))
   }
 }
