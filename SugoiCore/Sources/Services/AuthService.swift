@@ -130,13 +130,17 @@ public actor AuthService {
     )
     self.session = restoredSession
 
-    // Try refreshing to validate the session
+    // Try refreshing to get a fresh access token
     do {
       return try await refreshTokens()
-    } catch {
-      // If refresh fails, clear and return nil
-      await logout()
+    } catch AuthError.sessionExpired {
+      // Server explicitly revoked the token (AUTH response).
+      // logout() was already called inside refreshTokens().
       return nil
+    } catch {
+      // Network error or other transient failure — keep the restored session.
+      // The existing access token may still work.
+      return restoredSession
     }
   }
 
