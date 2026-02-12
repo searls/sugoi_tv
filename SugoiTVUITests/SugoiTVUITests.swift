@@ -1,41 +1,52 @@
-//
-//  SugoiTVUITests.swift
-//  SugoiTVUITests
-//
-//  Created by Justin Searls on 2/10/26.
-//
-
 import XCTest
 
 final class SugoiTVUITests: XCTestCase {
 
-    override func setUpWithError() throws {
-        // Put setup code here. This method is called before the invocation of each test method in the class.
+  @MainActor
+  func testGuideButtonOpensChannelGuide() throws {
+    let (user, pass) = try credentials()
+    let app = XCUIApplication()
+    app.launch()
 
-        // In UI tests it is usually best to stop immediately when a failure occurs.
-        continueAfterFailure = false
-
-        // In UI tests it’s important to set the initial state - such as interface orientation - required for your tests before they run. The setUp method is a good place to do this.
+    let guideButton = app.buttons["channelGuideButton"]
+    if !guideButton.waitForExistence(timeout: 5) {
+      login(app: app, user: user, pass: pass)
+      XCTAssertTrue(guideButton.waitForExistence(timeout: 15), "Guide button should appear after login")
     }
 
-    override func tearDownWithError() throws {
-        // Put teardown code here. This method is called after the invocation of each test method in the class.
-    }
+    guideButton.tap()
 
-    @MainActor
-    func testExample() throws {
-        // UI tests must launch the application that they test.
-        let app = XCUIApplication()
-        app.launch()
+    // Look for the Close button that appears in the channel guide sheet toolbar
+    let closeButton = app.buttons["Close"]
+    XCTAssertTrue(closeButton.waitForExistence(timeout: 5), "Channel Guide sheet should open with Close button")
+  }
 
-        // Use XCTAssert and related functions to verify your tests produce the correct results.
-    }
+  // MARK: - Helpers
 
-    @MainActor
-    func testLaunchPerformance() throws {
-        // This measures how long it takes to launch your application.
-        measure(metrics: [XCTApplicationLaunchMetric()]) {
-            XCUIApplication().launch()
-        }
+  private func login(app: XCUIApplication, user: String, pass: String) {
+    let customerID = app.textFields["Customer ID"]
+    guard customerID.waitForExistence(timeout: 10) else {
+      XCTFail("Login screen not found")
+      return
     }
+    customerID.tap()
+    customerID.typeText(user)
+    let password = app.secureTextFields["Password"]
+    password.tap()
+    password.typeText(pass)
+    app.buttons["Sign In"].tap()
+  }
+
+  private func credentials() throws -> (String, String) {
+    let path = "/tmp/sugoi_test_credentials"
+    guard let data = FileManager.default.contents(atPath: path),
+          let content = String(data: data, encoding: .utf8) else {
+      throw XCTSkip("No credentials file at \(path)")
+    }
+    let lines = content.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: "\n")
+    guard lines.count >= 2 else {
+      throw XCTSkip("Credentials file needs two lines: USER and PASS")
+    }
+    return (String(lines[0]), String(lines[1]))
+  }
 }

@@ -9,5 +9,8 @@ struct SugoiTVApp: App {
     WindowGroup {
       SugoiTVRootView(appState: appState)
     }
+    #if os(macOS)
+    .windowStyle(.hiddenTitleBar)
+    #endif
   }
 }

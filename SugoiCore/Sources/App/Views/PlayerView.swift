@@ -1,9 +1,8 @@
 import AVFoundation
-import AVKit
 import SwiftUI
 
-/// Wraps the platform system player (AVPlayerViewController / AVPlayerView)
-/// to get native controls, PiP, AirPlay, Now Playing, and keyboard shortcuts for free.
+/// Platform video player using AVPlayerLayer directly on all platforms.
+/// Passes through all events to SwiftUI overlays (e.g. the channel guide button).
 public struct PlayerView: View {
   let playerManager: PlayerManager
   let isLive: Bool
@@ -37,6 +36,7 @@ public struct PlayerView: View {
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
       }
     }
+    .accessibilityIdentifier("playerView")
   }
 }
 
@@ -45,54 +45,92 @@ public struct PlayerView: View {
 #if os(macOS)
 import AppKit
 
+/// Renders video via AVPlayerLayer but returns nil from hitTest so all mouse
+/// events pass through to SwiftUI overlays (e.g. the channel guide button).
+/// AVPlayerView intercepts events at the AppKit level even when SwiftUI's
+/// .allowsHitTesting(false) is applied, so we bypass it entirely.
+private class PassthroughPlayerNSView: NSView {
+  override init(frame: NSRect) {
+    super.init(frame: frame)
+    wantsLayer = true
+  }
+
+  @available(*, unavailable)
+  required init?(coder: NSCoder) {
+    fatalError("init(coder:) has not been implemented")
+  }
+
+  override func makeBackingLayer() -> CALayer {
+    AVPlayerLayer()
+  }
+
+  var playerLayer: AVPlayerLayer {
+    layer as! AVPlayerLayer
+  }
+
+  override func hitTest(_ point: NSPoint) -> NSView? {
+    nil
+  }
+}
+
 private struct SystemPlayerView: NSViewRepresentable {
   let player: AVPlayer
   let isLive: Bool
 
-  func makeNSView(context: Context) -> AVPlayerView {
-    let view = AVPlayerView()
-    view.player = player
-    view.controlsStyle = .floating
-    view.showsFullScreenToggleButton = true
-    // PiP disabled — AVPlayerView PiP breaks inside NSViewRepresentable
-    view.allowsPictureInPicturePlayback = false
+  func makeNSView(context: Context) -> PassthroughPlayerNSView {
+    let view = PassthroughPlayerNSView()
+    view.playerLayer.player = player
+    view.playerLayer.videoGravity = .resizeAspect
     return view
   }
 
-  func updateNSView(_ nsView: AVPlayerView, context: Context) {
-    if nsView.player !== player {
-      nsView.player = player
+  func updateNSView(_ nsView: PassthroughPlayerNSView, context: Context) {
+    if nsView.playerLayer.player !== player {
+      nsView.playerLayer.player = player
     }
-    // Speed clamping for live is handled by PlayerManager's rate observer
   }
 }
 
 #else
 import UIKit
 
-private struct SystemPlayerView: UIViewControllerRepresentable {
+/// Renders video via AVPlayerLayer with user interaction disabled so all touches
+/// pass through to SwiftUI overlays. AVPlayerViewController intercepts gestures
+/// at the UIKit level even with SwiftUI's .allowsHitTesting(false).
+private class PassthroughPlayerUIView: UIView {
+  override class var layerClass: AnyClass { AVPlayerLayer.self }
+
+  var playerLayer: AVPlayerLayer { layer as! AVPlayerLayer }
+
+  override init(frame: CGRect) {
+    super.init(frame: frame)
+    isUserInteractionEnabled = false
+  }
+
+  @available(*, unavailable)
+  required init?(coder: NSCoder) {
+    fatalError("init(coder:) has not been implemented")
+  }
+
+  override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+    nil
+  }
+}
+
+private struct SystemPlayerView: UIViewRepresentable {
   let player: AVPlayer
   let isLive: Bool
 
-  func makeUIViewController(context: Context) -> AVPlayerViewController {
-    let vc = AVPlayerViewController()
-    vc.player = player
-    vc.allowsPictureInPicturePlayback = true
-    vc.canStartPictureInPictureAutomaticallyFromInline = true
-    if isLive {
-      vc.speeds = [.init(rate: 1.0)]
-    }
-    return vc
+  func makeUIView(context: Context) -> PassthroughPlayerUIView {
+    let view = PassthroughPlayerUIView()
+    view.playerLayer.player = player
+    view.playerLayer.videoGravity = .resizeAspect
+    return view
   }
 
-  func updateUIViewController(_ vc: AVPlayerViewController, context: Context) {
-    if vc.player !== player {
-      vc.player = player
-    }
-    if isLive {
-      vc.speeds = [.init(rate: 1.0)]
-    } else {
-      vc.speeds = AVPlaybackSpeed.systemDefaultSpeeds
+  func updateUIView(_ uiView: PassthroughPlayerUIView, context: Context) {
+    if uiView.playerLayer.player !== player {
+      uiView.playerLayer.player = player
     }
   }
 }

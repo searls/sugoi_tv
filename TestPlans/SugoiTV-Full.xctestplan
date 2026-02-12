@@ -4,6 +4,16 @@
       "id" : "E8A1F2B0-1234-4567-8901-ABCDEF123456",
       "name" : "Default",
       "options" : {
+        "environmentVariableEntries" : [
+          {
+            "key" : "YOITV_USER",
+            "value" : "$(YOITV_USER)"
+          },
+          {
+            "key" : "YOITV_PASS",
+            "value" : "$(YOITV_PASS)"
+          }
+        ],
         "mainThreadCheckerEnabled" : "failure"
       }
     }

@@ -54,34 +54,40 @@ private struct AuthenticatedContainer: View {
     ZStack(alignment: .topLeading) {
       PlayerView(playerManager: playerManager, isLive: playerManager.isLive)
         .ignoresSafeArea()
+        .allowsHitTesting(false)
 
-      Button {
-        showingGuide.toggle()
-      } label: {
-        Image(systemName: "list.bullet")
-          .font(.title3)
-          .padding(10)
-      }
-      .buttonStyle(.plain)
-      .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
-      .padding()
-      .popover(isPresented: $showingGuide) {
+      guideButton
+    }
+      .sheet(isPresented: $showingGuide) {
         channelGuide
       }
-    }
-    .task {
-      await channelListVM.loadChannels()
-      autoSelectChannel()
-    }
-    .onChange(of: selectedChannel) { _, channel in
-      if let channel {
-        playChannel(channel)
+      .task {
+        await channelListVM.loadChannels()
+        autoSelectChannel()
       }
+      .onChange(of: selectedChannel) { _, channel in
+        if let channel {
+          playChannel(channel)
+        }
+      }
+  }
+
+  private var guideButton: some View {
+    Button {
+      showingGuide = true
+    } label: {
+      Image(systemName: "list.bullet")
+        .font(.title3)
+        .padding(10)
     }
+    .buttonStyle(.plain)
+    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
+    .padding()
+    .accessibilityIdentifier("channelGuideButton")
   }
 
   private var channelGuide: some View {
-    VStack(spacing: 0) {
+    NavigationStack {
       ChannelListView(
         viewModel: channelListVM,
         onSelectChannel: { channel in
@@ -89,19 +95,25 @@ private struct AuthenticatedContainer: View {
           showingGuide = false
         }
       )
-
-      Divider()
-
-      Button("Sign Out") {
-        Task { await appState.logout() }
+      .navigationTitle("Channel Guide")
+      #if !os(macOS)
+      .navigationBarTitleDisplayMode(.inline)
+      #endif
+      .toolbar {
+        ToolbarItem(placement: .cancellationAction) {
+          Button("Close") { showingGuide = false }
+        }
+        ToolbarItem(placement: .destructiveAction) {
+          Button("Sign Out") {
+            Task { await appState.logout() }
+          }
+          .accessibilityIdentifier("signOutButton")
+        }
       }
-      .buttonStyle(.plain)
-      .font(.footnote)
-      .foregroundStyle(.secondary)
-      .padding()
-      .frame(maxWidth: .infinity, alignment: .leading)
     }
-    .frame(width: 320, height: 500)
+    #if os(macOS)
+    .frame(minWidth: 350, idealWidth: 400, minHeight: 400, idealHeight: 600)
+    #endif
   }
 
   private func autoSelectChannel() {
