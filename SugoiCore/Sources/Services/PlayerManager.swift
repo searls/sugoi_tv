@@ -1,5 +1,6 @@
 import AVFoundation
 import Foundation
+import MediaPlayer
 import Observation
 
 /// Playback state machine
@@ -152,6 +153,24 @@ public final class PlayerManager {
     ) { [weak self] _ in
       self?.state = .ended
     }
+  }
+
+  // MARK: - Now Playing
+
+  /// Set Now Playing info for Lock Screen, Control Center, and AirPlay displays
+  public func setNowPlayingInfo(title: String, isLiveStream: Bool) {
+    var info: [String: Any] = [
+      MPMediaItemPropertyTitle: title,
+      MPNowPlayingInfoPropertyIsLiveStream: isLiveStream,
+      MPNowPlayingInfoPropertyMediaType: MPNowPlayingInfoMediaType.video.rawValue,
+    ]
+    if let item = _player?.currentItem {
+      info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = item.currentTime().seconds
+      if !isLiveStream && item.duration.seconds.isFinite {
+        info[MPMediaItemPropertyPlaybackDuration] = item.duration.seconds
+      }
+    }
+    MPNowPlayingInfoCenter.default().nowPlayingInfo = info
   }
 
   // MARK: - Cleanup

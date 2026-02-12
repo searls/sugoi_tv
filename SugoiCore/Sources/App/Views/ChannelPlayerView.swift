@@ -25,5 +25,6 @@ struct ChannelPlayerView: View {
 
     let referer = session.productConfig.vmsReferer
     playerManager.loadLiveStream(url: url, referer: referer)
+    playerManager.setNowPlayingInfo(title: channel.name, isLiveStream: true)
   }
 }
