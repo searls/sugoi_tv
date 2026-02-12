@@ -71,5 +71,8 @@ private struct AuthenticatedContainer: View {
       }
     }
     .navigationSplitViewStyle(.prominentDetail)
+    #if os(macOS)
+    .toolbarVisibility(.hidden, for: .windowToolbar)
+    #endif
   }
 }
