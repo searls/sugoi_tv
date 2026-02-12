@@ -12,7 +12,9 @@ struct LoginViewModelTests {
     let keychain = MockKeychainService()
     let client = APIClient(session: mock.session)
     let auth = AuthService(keychain: keychain, apiClient: client)
-    let vm = LoginViewModel(authService: auth)
+    let vm = LoginViewModel(loginAction: { cid, password in
+      _ = try await auth.login(cid: cid, password: password)
+    })
 
     vm.customerID = ""
     vm.password = ""
@@ -37,7 +39,9 @@ struct LoginViewModelTests {
     }
 
     let auth = AuthService(keychain: MockKeychainService(), apiClient: APIClient(session: mock.session))
-    let vm = LoginViewModel(authService: auth)
+    let vm = LoginViewModel(loginAction: { cid, password in
+      _ = try await auth.login(cid: cid, password: password)
+    })
     vm.customerID = "testuser"
     vm.password = "testpass"
 
@@ -62,7 +66,9 @@ struct LoginViewModelTests {
     }
 
     let auth = AuthService(keychain: MockKeychainService(), apiClient: APIClient(session: mock.session))
-    let vm = LoginViewModel(authService: auth)
+    let vm = LoginViewModel(loginAction: { cid, password in
+      _ = try await auth.login(cid: cid, password: password)
+    })
     vm.customerID = "bad"
     vm.password = "bad"
 
@@ -81,7 +87,9 @@ struct LoginViewModelTests {
     }
 
     let auth = AuthService(keychain: MockKeychainService(), apiClient: APIClient(session: mock.session))
-    let vm = LoginViewModel(authService: auth)
+    let vm = LoginViewModel(loginAction: { cid, password in
+      _ = try await auth.login(cid: cid, password: password)
+    })
     vm.customerID = "user"
     vm.password = "pass"
 

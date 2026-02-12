@@ -8,10 +8,10 @@ public final class LoginViewModel {
   var isLoading: Bool = false
   var errorMessage: String?
 
-  private let authService: AuthService
+  private let loginAction: (String, String) async throws -> Void
 
-  public init(authService: AuthService) {
-    self.authService = authService
+  public init(loginAction: @escaping (String, String) async throws -> Void) {
+    self.loginAction = loginAction
   }
 
   func login() async {
@@ -24,7 +24,7 @@ public final class LoginViewModel {
     errorMessage = nil
 
     do {
-      _ = try await authService.login(cid: customerID, password: password)
+      try await loginAction(customerID, password)
     } catch let error as AuthError {
       switch error {
       case .loginFailed:

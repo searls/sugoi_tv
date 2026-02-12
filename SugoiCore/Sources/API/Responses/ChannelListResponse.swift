@@ -7,7 +7,7 @@ public struct ChannelListResponse: Codable, Sendable {
 }
 
 /// A single channel as returned by the VMS API
-public struct ChannelDTO: Codable, Sendable, Equatable {
+public struct ChannelDTO: Codable, Sendable, Hashable {
   public let id: String
   public let uid: String?
   public let name: String
