@@ -6,15 +6,17 @@ import SwiftUI
 /// to get native controls, PiP, AirPlay, Now Playing, and keyboard shortcuts for free.
 public struct PlayerView: View {
   let playerManager: PlayerManager
+  let isLive: Bool
 
-  public init(playerManager: PlayerManager) {
+  public init(playerManager: PlayerManager, isLive: Bool = false) {
     self.playerManager = playerManager
+    self.isLive = isLive
   }
 
   public var body: some View {
     ZStack {
       if let player = playerManager.player {
-        SystemPlayerView(player: player)
+        SystemPlayerView(player: player, isLive: isLive)
           .ignoresSafeArea()
       } else {
         Color.black
@@ -45,12 +47,14 @@ import AppKit
 
 private struct SystemPlayerView: NSViewRepresentable {
   let player: AVPlayer
+  let isLive: Bool
 
   func makeNSView(context: Context) -> AVPlayerView {
     let view = AVPlayerView()
     view.player = player
     view.controlsStyle = .floating
     view.showsFullScreenToggleButton = true
+    view.allowsPictureInPicturePlayback = true
     return view
   }
 
@@ -58,6 +62,7 @@ private struct SystemPlayerView: NSViewRepresentable {
     if nsView.player !== player {
       nsView.player = player
     }
+    // Speed clamping for live is handled by PlayerManager's rate observer
   }
 }
 
@@ -66,18 +71,27 @@ import UIKit
 
 private struct SystemPlayerView: UIViewControllerRepresentable {
   let player: AVPlayer
+  let isLive: Bool
 
   func makeUIViewController(context: Context) -> AVPlayerViewController {
     let vc = AVPlayerViewController()
     vc.player = player
     vc.allowsPictureInPicturePlayback = true
     vc.canStartPictureInPictureAutomaticallyFromInline = true
+    if isLive {
+      vc.speeds = [.init(rate: 1.0)]
+    }
     return vc
   }
 
   func updateUIViewController(_ vc: AVPlayerViewController, context: Context) {
     if vc.player !== player {
       vc.player = player
+    }
+    if isLive {
+      vc.speeds = [.init(rate: 1.0)]
+    } else {
+      vc.speeds = AVPlaybackSpeed.systemDefaultSpeeds
     }
   }
 }

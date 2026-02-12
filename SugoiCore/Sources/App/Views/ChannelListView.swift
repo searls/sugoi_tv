@@ -43,11 +43,11 @@ public final class ChannelListViewModel {
 
 public struct ChannelListView: View {
   @Bindable var viewModel: ChannelListViewModel
-  var onSelectChannel: (ChannelDTO) -> Void
+  @Binding var selectedChannel: ChannelDTO?
 
-  public init(viewModel: ChannelListViewModel, onSelectChannel: @escaping (ChannelDTO) -> Void) {
+  public init(viewModel: ChannelListViewModel, selectedChannel: Binding<ChannelDTO?>) {
     self.viewModel = viewModel
-    self.onSelectChannel = onSelectChannel
+    self._selectedChannel = selectedChannel
   }
 
   public var body: some View {
@@ -73,13 +73,12 @@ public struct ChannelListView: View {
   }
 
   private var channelList: some View {
-    List {
+    List(selection: $selectedChannel) {
       ForEach(viewModel.filteredGroups, id: \.category) { group in
         Section(group.category) {
-          ForEach(group.channels, id: \.id) { channel in
+          ForEach(group.channels, id: \.self) { channel in
             ChannelRow(channel: channel, channelListHost: "")
-              .contentShape(Rectangle())
-              .onTapGesture { onSelectChannel(channel) }
+              .tag(channel)
           }
         }
       }

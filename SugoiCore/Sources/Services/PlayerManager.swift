@@ -133,10 +133,15 @@ public final class PlayerManager {
       }
     }
 
-    // Rate changes (play/pause detection)
+    // Rate changes (play/pause detection + live rate clamping)
     rateObservation = player.observe(\.rate, options: [.new]) { [weak self] player, _ in
       Task { @MainActor in
         guard let self, self.state != .loading && self.state != .idle else { return }
+        // Clamp playback speed to 1x for live streams
+        if self.isLive && player.rate != 0 && player.rate != 1 {
+          player.rate = 1.0
+          return
+        }
         if player.rate > 0 {
           self.state = .playing
         } else if self.state == .playing {

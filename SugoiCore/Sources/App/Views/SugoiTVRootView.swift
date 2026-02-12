@@ -36,30 +36,34 @@ public struct SugoiTVRootView: View {
   }
 }
 
-/// Separate view so @State path lives at the right level
+/// Separate view so @State lives at the right level
 private struct AuthenticatedContainer: View {
   let appState: AppState
   let session: AuthService.Session
-  @State private var path: [ChannelDTO] = []
+  @State private var selectedChannel: ChannelDTO?
 
   var body: some View {
-    NavigationStack(path: $path) {
+    NavigationSplitView {
       ChannelListView(
         viewModel: ChannelListViewModel(
           channelService: appState.channelService,
           config: session.productConfig
         ),
-        onSelectChannel: { channel in path.append(channel) }
+        selectedChannel: $selectedChannel
       )
-      .navigationDestination(for: ChannelDTO.self) { channel in
-        ChannelPlayerView(channel: channel, session: session)
-      }
       .toolbar {
         ToolbarItem(placement: .destructiveAction) {
           Button("Sign Out") {
             Task { await appState.logout() }
           }
         }
+      }
+    } detail: {
+      if let channel = selectedChannel {
+        ChannelPlayerView(channel: channel, session: session)
+      } else {
+        ContentUnavailableView("Select a Channel", systemImage: "tv",
+          description: Text("Choose a channel from the sidebar"))
       }
     }
   }

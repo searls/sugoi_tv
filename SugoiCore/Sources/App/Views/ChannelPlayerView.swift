@@ -7,11 +7,7 @@ struct ChannelPlayerView: View {
   @State private var playerManager = PlayerManager()
 
   var body: some View {
-    PlayerView(playerManager: playerManager)
-      .navigationTitle(channel.name)
-      #if !os(macOS)
-      .navigationBarTitleDisplayMode(.inline)
-      #endif
+    PlayerView(playerManager: playerManager, isLive: playerManager.isLive)
       .onAppear { startPlayback() }
       .onDisappear { playerManager.stop() }
   }
