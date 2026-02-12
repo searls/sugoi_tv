@@ -2,8 +2,18 @@
   "configVersion": 3,
   "enabled": true,
   "sources": [
-    "**/*.*",
-    "replace/these/with/globs/of/your/source/and/test/files.*"
+    "SugoiCore/Sources/**/*.swift",
+    "SugoiCore/Tests/**/*.swift",
+    "SugoiCore/Package.swift",
+    "SugoiTV/**/*.swift",
+    "SugoiTV/Info.plist",
+    "SugoiTV/SugoiTV.entitlements",
+    "SugoiTV/Assets.xcassets/**/*.json",
+    "SugoiTV.xcodeproj/project.pbxproj",
+    "SugoiTV.xcworkspace/contents.xcworkspacedata",
+    "SugoiTVTests/**/*.swift",
+    "SugoiTVUITests/**/*.swift",
+    "TestPlans/**/*.xctestplan"
   ],
   "hooks": [
     {
@@ -22,6 +32,15 @@
           "command": "prove_it run_builtin beads:require_wip",
           "when": {
             "fileExists": ".beads"
+          }
+        },
+        {
+          "name": "investment-check",
+          "type": "agent",
+          "promptType": "reference",
+          "prompt": "review:test_investment",
+          "when": {
+            "linesWrittenSinceLastRun": 500
           }
         }
       ]
