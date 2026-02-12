@@ -134,20 +134,6 @@ variables.
 - The EPG endpoint can return up to 30 days of listings. Consider lazy-loading
   EPG data per-channel on selection rather than bulk-fetching all 87 channels.
 
-## Beads project management
-
-This project uses **bd** (beads) for issue tracking. Run `bd onboard` to get started.
-
-## Quick Reference
-
-```bash
-bd ready              # Find available work
-bd show <id>          # View issue details
-bd update <id> --status in_progress  # Claim work
-bd close <id>         # Complete work
-bd sync               # Sync with git
-```
-
 ## Landing the Plane (Session Completion)
 
 **When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.
