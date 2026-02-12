@@ -51,12 +51,16 @@ private struct AuthenticatedContainer: View {
         ),
         selectedChannel: $selectedChannel
       )
-      .toolbar {
-        ToolbarItem(placement: .destructiveAction) {
-          Button("Sign Out") {
-            Task { await appState.logout() }
-          }
+      .navigationSplitViewColumnWidth(min: 250, ideal: 300, max: 400)
+      .safeAreaInset(edge: .bottom) {
+        Button("Sign Out") {
+          Task { await appState.logout() }
         }
+        .buttonStyle(.plain)
+        .font(.footnote)
+        .foregroundStyle(.secondary)
+        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
       }
     } detail: {
       if let channel = selectedChannel {
@@ -66,5 +70,6 @@ private struct AuthenticatedContainer: View {
           description: Text("Choose a channel from the sidebar"))
       }
     }
+    .navigationSplitViewStyle(.prominentDetail)
   }
 }

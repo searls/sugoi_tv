@@ -66,10 +66,8 @@ public struct ChannelListView: View {
         channelList
       }
     }
-    .searchable(text: $viewModel.searchText, prompt: "Search channels")
     .refreshable { await viewModel.loadChannels() }
     .task { await viewModel.loadChannels() }
-    .navigationTitle("Channels")
   }
 
   private var channelList: some View {

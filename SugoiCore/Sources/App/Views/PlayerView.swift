@@ -54,7 +54,8 @@ private struct SystemPlayerView: NSViewRepresentable {
     view.player = player
     view.controlsStyle = .floating
     view.showsFullScreenToggleButton = true
-    view.allowsPictureInPicturePlayback = true
+    // PiP disabled — AVPlayerView PiP breaks inside NSViewRepresentable
+    view.allowsPictureInPicturePlayback = false
     return view
   }
 
