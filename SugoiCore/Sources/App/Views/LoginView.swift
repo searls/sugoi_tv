@@ -93,7 +93,7 @@ public struct LoginView: View {
         }
       }
       .buttonStyle(.borderedProminent)
-      .disabled(viewModel.isLoading || viewModel.customerID.isEmpty || viewModel.password.isEmpty)
+      .disabled(viewModel.isLoading)
     }
     .padding(32)
     .frame(maxWidth: 400)

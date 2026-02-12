@@ -33,7 +33,7 @@ public actor KeychainService: KeychainServiceProtocol {
   public init(
     serviceName: String = "com.searls.sugoi-tv",
     accessGroup: String? = nil,
-    synchronizable: Bool = true  // iCloud Keychain sync
+    synchronizable: Bool = false
   ) {
     self.serviceName = serviceName
     self.accessGroup = accessGroup
@@ -103,6 +103,7 @@ public actor KeychainService: KeychainServiceProtocol {
       kSecClass as String: kSecClassGenericPassword,
       kSecAttrService as String: serviceName,
       kSecAttrAccount as String: key,
+      kSecUseDataProtectionKeychain as String: kCFBooleanTrue as Any,
     ]
     if synchronizable {
       query[kSecAttrSynchronizable as String] = kCFBooleanTrue
