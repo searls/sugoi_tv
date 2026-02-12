@@ -2,18 +2,12 @@
   "configVersion": 3,
   "enabled": true,
   "sources": [
-    "SugoiCore/Sources/**/*.swift",
-    "SugoiCore/Tests/**/*.swift",
-    "SugoiCore/Package.swift",
-    "SugoiTV/**/*.swift",
-    "SugoiTV/Info.plist",
-    "SugoiTV/SugoiTV.entitlements",
-    "SugoiTV/Assets.xcassets/**/*.json",
-    "SugoiTV.xcodeproj/project.pbxproj",
-    "SugoiTV.xcworkspace/contents.xcworkspacedata",
-    "SugoiTVTests/**/*.swift",
-    "SugoiTVUITests/**/*.swift",
-    "TestPlans/**/*.xctestplan"
+    "**/*.swift",
+    "**/*.plist",
+    "**/*.entitlements",
+    "**/*.json",
+    "**/*.pbxproj",
+    "**/*.xctestplan"
   ],
   "hooks": [
     {
