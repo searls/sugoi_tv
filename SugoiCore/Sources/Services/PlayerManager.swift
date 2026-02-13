@@ -123,7 +123,7 @@ public final class PlayerManager {
 
   private func observePlayer(_ player: AVPlayer, resumeFrom: TimeInterval) {
     // Periodic time updates
-    let interval = CMTime(seconds: 0.5, preferredTimescale: 600)
+    let interval = CMTime(seconds: 0.05, preferredTimescale: 600)
     timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) {
       [weak self] time in
       self?.currentTime = time.seconds

@@ -16,6 +16,9 @@ let package = Package(
     .target(
       name: "SugoiCore",
       path: "Sources",
+      resources: [
+        .copy("PreviewContent"),
+      ],
       swiftSettings: [
         .swiftLanguageMode(.v6),
       ]

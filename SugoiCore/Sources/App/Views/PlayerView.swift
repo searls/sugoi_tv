@@ -1,8 +1,10 @@
 import AVFoundation
+import AVKit
 import SwiftUI
 
-/// Platform video player using AVPlayerLayer directly on all platforms.
-/// Passes through all events to SwiftUI overlays (e.g. the channel guide button).
+/// Cross-platform video player.
+/// macOS uses AVPlayerLayer + custom SwiftUI controls with Liquid Glass styling.
+/// iOS/tvOS uses SwiftUI's VideoPlayer with system controls.
 public struct PlayerView: View {
   let playerManager: PlayerManager
 
@@ -13,7 +15,7 @@ public struct PlayerView: View {
   public var body: some View {
     Group {
       if let player = playerManager.player {
-        SystemPlayerView(player: player)
+        platformPlayer(player: player)
           .ignoresSafeArea()
       } else {
         Color.black
@@ -29,6 +31,15 @@ public struct PlayerView: View {
     }
   }
 
+  @ViewBuilder
+  private func platformPlayer(player: AVPlayer) -> some View {
+    #if os(macOS)
+    MacOSPlayerView(playerManager: playerManager, player: player)
+    #else
+    VideoPlayer(player: player)
+    #endif
+  }
+
   private var showingError: Binding<Bool> {
     Binding(
       get: { if case .failed = playerManager.state { true } else { false } },
@@ -42,16 +53,16 @@ public struct PlayerView: View {
   }
 }
 
-// MARK: - Platform system player wrappers
+// MARK: - macOS: Custom player with Liquid Glass controls
 
 #if os(macOS)
 import AppKit
 
-/// Renders video via AVPlayerLayer but returns nil from hitTest so all mouse
-/// events pass through to SwiftUI overlays (e.g. the channel guide button).
-/// AVPlayerView intercepts events at the AppKit level even when SwiftUI's
-/// .allowsHitTesting(false) is applied, so we bypass it entirely.
-private class PassthroughPlayerNSView: NSView {
+// MARK: NSView backed by AVPlayerLayer
+
+/// NSView backed by AVPlayerLayer with black background for letterbox bars.
+/// Returns nil from hitTest so mouse events pass through to SwiftUI controls.
+class PassthroughPlayerNSView: NSView {
   override init(frame: NSRect) {
     super.init(frame: frame)
     wantsLayer = true
@@ -63,7 +74,9 @@ private class PassthroughPlayerNSView: NSView {
   }
 
   override func makeBackingLayer() -> CALayer {
-    AVPlayerLayer()
+    let layer = AVPlayerLayer()
+    layer.backgroundColor = NSColor.black.cgColor
+    return layer
   }
 
   var playerLayer: AVPlayerLayer {
@@ -75,13 +88,28 @@ private class PassthroughPlayerNSView: NSView {
   }
 }
 
-private struct SystemPlayerView: NSViewRepresentable {
+/// Renders video via AVPlayerLayer with event passthrough.
+/// Optionally vends an AVPictureInPictureController via binding.
+struct PassthroughPlayerView: NSViewRepresentable {
   let player: AVPlayer
+  var pipController: Binding<AVPictureInPictureController?>? = nil
 
-  func makeNSView(context: Context) -> PassthroughPlayerNSView {
+  static func makeConfiguredView(player: AVPlayer) -> PassthroughPlayerNSView {
     let view = PassthroughPlayerNSView()
     view.playerLayer.player = player
     view.playerLayer.videoGravity = .resizeAspect
+    return view
+  }
+
+  func makeNSView(context: Context) -> PassthroughPlayerNSView {
+    let view = Self.makeConfiguredView(player: player)
+    if let binding = pipController,
+       AVPictureInPictureController.isPictureInPictureSupported() {
+      let pip = AVPictureInPictureController(playerLayer: view.playerLayer)
+      DispatchQueue.main.async {
+        binding.wrappedValue = pip
+      }
+    }
     return view
   }
 
@@ -92,46 +120,301 @@ private struct SystemPlayerView: NSViewRepresentable {
   }
 }
 
-#else
-import UIKit
-
-/// Renders video via AVPlayerLayer with user interaction disabled so all touches
-/// pass through to SwiftUI overlays. AVPlayerViewController intercepts gestures
-/// at the UIKit level even with SwiftUI's .allowsHitTesting(false).
-private class PassthroughPlayerUIView: UIView {
-  override class var layerClass: AnyClass { AVPlayerLayer.self }
-
-  var playerLayer: AVPlayerLayer { layer as! AVPlayerLayer }
-
-  override init(frame: CGRect) {
-    super.init(frame: frame)
-    isUserInteractionEnabled = false
-  }
-
-  @available(*, unavailable)
-  required init?(coder: NSCoder) {
-    fatalError("init(coder:) has not been implemented")
-  }
-
-  override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
-    nil
-  }
-}
-
-private struct SystemPlayerView: UIViewRepresentable {
+/// Wraps AVRoutePickerView for AirPlay output selection.
+struct AirPlayPickerView: NSViewRepresentable {
   let player: AVPlayer
 
-  func makeUIView(context: Context) -> PassthroughPlayerUIView {
-    let view = PassthroughPlayerUIView()
-    view.playerLayer.player = player
-    view.playerLayer.videoGravity = .resizeAspect
-    return view
+  static func makeConfiguredView(player: AVPlayer) -> AVRoutePickerView {
+    let picker = AVRoutePickerView()
+    picker.player = player
+    picker.isRoutePickerButtonBordered = false
+    return picker
   }
 
-  func updateUIView(_ uiView: PassthroughPlayerUIView, context: Context) {
-    if uiView.playerLayer.player !== player {
-      uiView.playerLayer.player = player
+  func makeNSView(context: Context) -> AVRoutePickerView {
+    Self.makeConfiguredView(player: player)
+  }
+
+  func updateNSView(_ nsView: AVRoutePickerView, context: Context) {
+    if nsView.player !== player {
+      nsView.player = player
     }
   }
 }
+
+// MARK: Format helper
+
+private func formatTime(_ seconds: TimeInterval) -> String {
+  guard seconds.isFinite else { return "0:00" }
+  let totalSeconds = Int(seconds)
+  let hours = totalSeconds / 3600
+  let minutes = (totalSeconds % 3600) / 60
+  let secs = totalSeconds % 60
+  if hours > 0 {
+    return String(format: "%d:%02d:%02d", hours, minutes, secs)
+  }
+  return String(format: "%d:%02d", minutes, secs)
+}
+
+// MARK: macOS player container
+
+/// Owns PiP state and wires together video layer + controls overlay.
+private struct MacOSPlayerView: View {
+  let playerManager: PlayerManager
+  let player: AVPlayer
+  @State private var pipController: AVPictureInPictureController?
+
+  var body: some View {
+    ZStack {
+      Color.black.ignoresSafeArea()
+      PassthroughPlayerView(player: player, pipController: $pipController)
+      PlayerControlsOverlay(
+        playerManager: playerManager,
+        player: player,
+        pipController: pipController
+      )
+    }
+    .onKeyPress(.space) {
+      playerManager.togglePlayPause()
+      return .handled
+    }
+  }
+}
+
+// MARK: Player controls overlay (Liquid Glass)
+
+/// Single Liquid Glass bar with borderless buttons inside — no nested glass.
+/// Auto-shows on mouse hover, hides after 3s inactivity.
+private struct PlayerControlsOverlay: View {
+  let playerManager: PlayerManager
+  let player: AVPlayer
+  let pipController: AVPictureInPictureController?
+
+  @State private var isVisible = true
+  @State private var hideTask: Task<Void, Never>?
+  @State private var isScrubbing = false
+  @State private var scrubPosition: TimeInterval = 0
+  @State private var volume: Float = 1.0
+  @State private var showVolumePopover = false
+  @State private var playbackRate: Float = 1.0
+
+  var body: some View {
+    ZStack(alignment: .bottom) {
+      // Invisible hover region covering the full player area
+      Color.clear
+        .contentShape(Rectangle())
+        .onHover { hovering in
+          if hovering { showControls() } else { scheduleHide() }
+        }
+        .onContinuousHover { phase in
+          if case .active = phase { showControls() }
+        }
+
+      if isVisible {
+        controlsBar
+          .transition(.opacity.combined(with: .move(edge: .bottom)))
+          .padding(.horizontal, 20)
+          .padding(.bottom, 16)
+      }
+    }
+    .animation(.easeInOut(duration: 0.25), value: isVisible)
+    .onAppear {
+      volume = player.volume
+      scheduleHide()
+    }
+  }
+
+  // Single glass bar — all buttons use .borderless to avoid glass-in-glass
+  private var controlsBar: some View {
+    HStack(spacing: 16) {
+      // Play/pause
+      Button {
+        playerManager.togglePlayPause()
+        if playerManager.state == .playing && playbackRate != 1.0 {
+          player.rate = playbackRate
+        }
+        scheduleHide()
+      } label: {
+        Image(systemName: playerManager.state == .playing ? "pause.fill" : "play.fill")
+          .font(.title2)
+          .frame(width: 36, height: 36)
+      }
+      .buttonStyle(.borderless)
+
+      // Time + scrubber (VOD) or LIVE badge
+      if playerManager.isLive {
+        HStack(spacing: 4) {
+          Circle().fill(.red).frame(width: 8, height: 8)
+          Text("LIVE").font(.caption.bold())
+        }
+        Spacer()
+      } else {
+        Text(formatTime(currentDisplayTime))
+          .font(.caption.monospacedDigit())
+          .foregroundStyle(.secondary)
+
+        if playerManager.duration > 0 {
+          Slider(
+            value: scrubBinding,
+            in: 0...max(playerManager.duration, 1)
+          ) { editing in
+            isScrubbing = editing
+            if editing {
+              scrubPosition = playerManager.currentTime
+              cancelHide()
+            } else {
+              playerManager.seek(to: scrubPosition)
+              scheduleHide()
+            }
+          }
+          .tint(.white)
+        } else {
+          Spacer()
+        }
+
+        Text(formatTime(playerManager.duration))
+          .font(.caption.monospacedDigit())
+          .foregroundStyle(.secondary)
+      }
+
+      // Playback speed (VOD only)
+      if !playerManager.isLive {
+        Menu {
+          ForEach([0.5, 1.0, 1.25, 1.5, 2.0] as [Float], id: \.self) { rate in
+            Button {
+              playbackRate = rate
+              if playerManager.state == .playing {
+                player.rate = rate
+              }
+            } label: {
+              HStack {
+                Text(rate == 1.0 ? "1x" : String(format: "%gx", rate))
+                if playbackRate == rate {
+                  Image(systemName: "checkmark")
+                }
+              }
+            }
+          }
+        } label: {
+          Text(playbackRate == 1.0 ? "1x" : String(format: "%gx", playbackRate))
+            .font(.caption.monospacedDigit())
+            .frame(width: 32, height: 28)
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+      }
+
+      // Volume button + vertical popover
+      Button {
+        showVolumePopover.toggle()
+      } label: {
+        Image(systemName: volumeIcon)
+          .font(.body)
+          .frame(width: 28, height: 28)
+      }
+      .buttonStyle(.borderless)
+      .popover(isPresented: $showVolumePopover, arrowEdge: .bottom) {
+        VStack(spacing: 8) {
+          Slider(value: $volume, in: 0...1)
+            .frame(width: 100)
+            .rotationEffect(.degrees(-90))
+            .frame(width: 32, height: 100)
+          Image(systemName: volumeIcon)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+        .padding(8)
+        .onChange(of: volume) { _, newValue in
+          player.volume = newValue
+        }
+      }
+
+      // PiP
+      if let pip = pipController {
+        Button {
+          if pip.isPictureInPictureActive {
+            pip.stopPictureInPicture()
+          } else {
+            pip.startPictureInPicture()
+          }
+        } label: {
+          Image(systemName: "pip.enter")
+            .font(.body)
+            .frame(width: 28, height: 28)
+        }
+        .buttonStyle(.borderless)
+      }
+
+      // AirPlay
+      AirPlayPickerView(player: player)
+        .frame(width: 28, height: 28)
+    }
+    .padding(.horizontal, 16)
+    .padding(.vertical, 10)
+    .glassEffect(in: .rect(cornerRadius: 16))
+  }
+
+  private var currentDisplayTime: TimeInterval {
+    isScrubbing ? scrubPosition : playerManager.currentTime
+  }
+
+  private var scrubBinding: Binding<Double> {
+    Binding(
+      get: { isScrubbing ? scrubPosition : playerManager.currentTime },
+      set: { scrubPosition = $0 }
+    )
+  }
+
+  private var volumeIcon: String {
+    if volume == 0 { return "speaker.slash.fill" }
+    if volume < 0.33 { return "speaker.wave.1.fill" }
+    if volume < 0.66 { return "speaker.wave.2.fill" }
+    return "speaker.wave.3.fill"
+  }
+
+  private func showControls() {
+    isVisible = true
+    scheduleHide()
+  }
+
+  private func scheduleHide() {
+    hideTask?.cancel()
+    guard !isScrubbing && !showVolumePopover else { return }
+    hideTask = Task {
+      try? await Task.sleep(for: .seconds(3))
+      guard !Task.isCancelled, !isScrubbing else { return }
+      isVisible = false
+    }
+  }
+
+  private func cancelHide() {
+    hideTask?.cancel()
+  }
+}
 #endif
+
+// MARK: - Preview
+
+#if DEBUG
+private struct PlayerViewPreview: View {
+  @State private var manager = PlayerManager()
+
+  var body: some View {
+    PlayerView(playerManager: manager)
+      .onAppear {
+        if let url = Bundle.module.url(
+          forResource: "test-video",
+          withExtension: "mp4",
+          subdirectory: "PreviewContent"
+        ) {
+          manager.loadVODStream(url: url, referer: "http://preview.local")
+        }
+      }
+  }
+}
+
+#Preview("Player") {
+  PlayerViewPreview()
+}
+#endif
+
