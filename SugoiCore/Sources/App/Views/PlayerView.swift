@@ -302,8 +302,8 @@ private struct PlayerControlsOverlay: View {
                     scrubPosition = playerManager.currentTime
                     cancelHide()
                   }
-                  let pct = min(max(value.location.x / width, 0), 1)
-                  scrubPosition = Double(pct) * playerManager.duration
+                  let pct = PlayerControlMath.scrubFraction(locationX: value.location.x, trackWidth: width)
+                  scrubPosition = PlayerControlMath.scrubPosition(fraction: pct, duration: playerManager.duration)
                 }
                 .onEnded { _ in
                   playerManager.seek(to: scrubPosition)
@@ -374,8 +374,7 @@ private struct PlayerControlsOverlay: View {
             .gesture(
               DragGesture(minimumDistance: 0)
                 .onChanged { value in
-                  let fraction = 1.0 - (value.location.y / height)
-                  volume = Float(min(max(fraction, 0), 1))
+                  volume = PlayerControlMath.volumeFraction(locationY: value.location.y, trackHeight: height)
                 }
             )
           }
@@ -415,6 +414,7 @@ private struct PlayerControlsOverlay: View {
     .padding(.horizontal, 16)
     .padding(.vertical, 10)
     .glassEffect(in: .rect(cornerRadius: 16))
+    .frame(maxWidth: 640)
   }
 
   private var currentDisplayTime: TimeInterval {
@@ -471,6 +471,28 @@ private struct PlayerViewPreview: View {
 
 #Preview("Player") {
   PlayerViewPreview()
+}
+
+// MARK: - Extracted drag-gesture math (internal for testability)
+
+enum PlayerControlMath {
+  /// Map a horizontal drag location to a [0,1] fraction of the track width.
+  static func scrubFraction(locationX: CGFloat, trackWidth: CGFloat) -> Double {
+    guard trackWidth > 0 else { return 0 }
+    return Double(min(max(locationX / trackWidth, 0), 1))
+  }
+
+  /// Map a [0,1] fraction to a playback position in seconds.
+  static func scrubPosition(fraction: Double, duration: Double) -> Double {
+    fraction * duration
+  }
+
+  /// Map a vertical drag location to a [0,1] volume (bottom = 0, top = 1).
+  static func volumeFraction(locationY: CGFloat, trackHeight: CGFloat) -> Float {
+    guard trackHeight > 0 else { return 0 }
+    let fraction = 1.0 - (locationY / trackHeight)
+    return Float(min(max(fraction, 0), 1))
+  }
 }
 #endif
 
