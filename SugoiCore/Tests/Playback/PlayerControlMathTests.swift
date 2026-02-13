@@ -155,4 +155,62 @@ struct ControlBarLayoutTests {
   }
 }
 
+@Suite("ControlBarLayout.allowsAutoHide")
+struct AllowsAutoHideTests {
+  @Test("allows auto-hide when nothing interactive is active")
+  func defaultAllows() {
+    let result = ControlBarLayout.allowsAutoHide(
+      isScrubbing: false,
+      showVolumePopover: false,
+      isAirPlayPresenting: false,
+      isExternalPlaybackActive: false
+    )
+    #expect(result == true)
+  }
+
+  @Test("blocks auto-hide during AirPlay to prevent route disruption")
+  func blockedDuringAirPlay() {
+    let result = ControlBarLayout.allowsAutoHide(
+      isScrubbing: false,
+      showVolumePopover: false,
+      isAirPlayPresenting: false,
+      isExternalPlaybackActive: true
+    )
+    #expect(result == false)
+  }
+
+  @Test("blocks auto-hide while scrubbing")
+  func blockedWhileScrubbing() {
+    let result = ControlBarLayout.allowsAutoHide(
+      isScrubbing: true,
+      showVolumePopover: false,
+      isAirPlayPresenting: false,
+      isExternalPlaybackActive: false
+    )
+    #expect(result == false)
+  }
+
+  @Test("blocks auto-hide while volume popover is open")
+  func blockedWhileVolumeOpen() {
+    let result = ControlBarLayout.allowsAutoHide(
+      isScrubbing: false,
+      showVolumePopover: true,
+      isAirPlayPresenting: false,
+      isExternalPlaybackActive: false
+    )
+    #expect(result == false)
+  }
+
+  @Test("blocks auto-hide while AirPlay picker is presenting")
+  func blockedWhileAirPlayPresenting() {
+    let result = ControlBarLayout.allowsAutoHide(
+      isScrubbing: false,
+      showVolumePopover: false,
+      isAirPlayPresenting: true,
+      isExternalPlaybackActive: false
+    )
+    #expect(result == false)
+  }
+}
+
 #endif

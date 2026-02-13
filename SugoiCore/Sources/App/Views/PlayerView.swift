@@ -239,12 +239,11 @@ private struct PlayerControlsOverlay: View {
           if case .active = phase { showControls() }
         }
 
-      if isVisible {
-        controlsBar
-          .transition(.opacity.combined(with: .move(edge: .bottom)))
-          .padding(.horizontal, 20)
-          .padding(.bottom, 16)
-      }
+      controlsBar
+        .opacity(isVisible ? 1 : 0)
+        .offset(y: isVisible ? 0 : 20)
+        .padding(.horizontal, 20)
+        .padding(.bottom, 16)
     }
     .animation(.easeInOut(duration: 0.25), value: isVisible)
     .onAppear {
@@ -442,7 +441,12 @@ private struct PlayerControlsOverlay: View {
 
   private func scheduleHide() {
     hideTask?.cancel()
-    guard !isScrubbing && !showVolumePopover && !isAirPlayPresenting else { return }
+    guard ControlBarLayout.allowsAutoHide(
+      isScrubbing: isScrubbing,
+      showVolumePopover: showVolumePopover,
+      isAirPlayPresenting: isAirPlayPresenting,
+      isExternalPlaybackActive: playerManager.isExternalPlaybackActive
+    ) else { return }
     hideTask = Task {
       try? await Task.sleep(for: .seconds(3))
       guard !Task.isCancelled, !isScrubbing else { return }
@@ -535,6 +539,20 @@ struct ControlBarLayout {
     showsTimeLabels = !isLive
     showsSpeedControl = !isLive
     expandsToFillWidth = !isLive
+  }
+
+  /// Whether the controls overlay is allowed to auto-hide after inactivity.
+  /// Returns false when any interactive state is active or during AirPlay
+  /// (toggling the overlay's layer tree disrupts the AirPlay route).
+  static func allowsAutoHide(
+    isScrubbing: Bool,
+    showVolumePopover: Bool,
+    isAirPlayPresenting: Bool,
+    isExternalPlaybackActive: Bool
+  ) -> Bool {
+    if isScrubbing || showVolumePopover || isAirPlayPresenting { return false }
+    if isExternalPlaybackActive { return false }
+    return true
   }
 }
 #endif

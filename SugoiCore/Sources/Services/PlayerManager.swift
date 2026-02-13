@@ -56,6 +56,21 @@ public final class PlayerManager {
   }
 
   private func loadAsset(_ asset: AVURLAsset, isLive: Bool, resumeFrom: TimeInterval = 0) {
+    // When AirPlay is active and we already have a player, swap the item
+    // instead of tearing down the player. Creating a new AVPlayer severs the
+    // AirPlay route; replaceCurrentItem(with:) preserves it.
+    if let existing = _player, isExternalPlaybackActive {
+      cleanupObservations()
+      self.isLive = isLive
+      state = .loading
+
+      let item = AVPlayerItem(asset: asset)
+      existing.replaceCurrentItem(with: item)
+      observePlayer(existing, resumeFrom: resumeFrom)
+      existing.play()
+      return
+    }
+
     cleanup()
     self.isLive = isLive
     state = .loading
@@ -209,7 +224,8 @@ public final class PlayerManager {
 
   // MARK: - Cleanup
 
-  private func cleanup() {
+  /// Tear down KVO observers and time observer without destroying the player.
+  private func cleanupObservations() {
     if let observer = timeObserver, let player = _player {
       player.removeTimeObserver(observer)
     }
@@ -221,13 +237,17 @@ public final class PlayerManager {
     externalPlaybackObservation?.invalidate()
     externalPlaybackObservation = nil
     NotificationCenter.default.removeObserver(self)
+    currentTime = 0
+    duration = 0
+  }
+
+  private func cleanup() {
+    cleanupObservations()
 
     _player?.pause()
     _player?.replaceCurrentItem(with: nil)
     _player = nil
 
-    currentTime = 0
-    duration = 0
     isLive = false
     isExternalPlaybackActive = false
   }

@@ -199,4 +199,42 @@ struct PlayerManagerTests {
     // No lastStreamInfo, so retry should be a no-op
     #expect(manager.player == nil)
   }
+
+  @Test("Reloading during AirPlay preserves the AVPlayer instance")
+  @MainActor
+  func reloadDuringAirPlayPreservesPlayer() {
+    let manager = PlayerManager()
+    let url1 = URL(string: "http://test.com/stream1.M3U8")!
+    let url2 = URL(string: "http://test.com/stream2.M3U8")!
+
+    manager.loadLiveStream(url: url1, referer: "http://play.yoitv.com")
+    let originalPlayer = manager.player
+
+    // Simulate AirPlay being active
+    manager.setExternalPlaybackActiveForTesting(true)
+
+    // Load a new stream while AirPlay is active
+    manager.loadLiveStream(url: url2, referer: "http://play.yoitv.com")
+
+    #expect(manager.player === originalPlayer, "AVPlayer must be reused during AirPlay to preserve route")
+    #expect(manager.state == .loading)
+    #expect(manager.isLive == true)
+  }
+
+  @Test("Reloading without AirPlay creates a new AVPlayer")
+  @MainActor
+  func reloadWithoutAirPlayCreatesNewPlayer() {
+    let manager = PlayerManager()
+    let url1 = URL(string: "http://test.com/stream1.M3U8")!
+    let url2 = URL(string: "http://test.com/stream2.M3U8")!
+
+    manager.loadLiveStream(url: url1, referer: "http://play.yoitv.com")
+    let originalPlayer = manager.player
+
+    // AirPlay is NOT active (default)
+    manager.loadLiveStream(url: url2, referer: "http://play.yoitv.com")
+
+    #expect(manager.player !== originalPlayer, "Should create new player when not AirPlaying")
+    #expect(manager.state == .loading)
+  }
 }
