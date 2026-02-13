@@ -140,7 +140,6 @@ private struct AuthenticatedContainer: View {
   var body: some View {
     ZStack(alignment: .topLeading) {
       PlayerView(playerManager: controller.playerManager)
-        .allowsHitTesting(false)
 
       if showingGuide {
         // Dimming scrim behind sidebar

@@ -26,6 +26,7 @@
           "promptType": "reference",
           "prompt": "review:test_investment",
           "model": "haiku",
+          "ruleFile": ".claude/rules/testing.md",
           "when": {
             "linesWrittenSinceLastRun": 500
           }
@@ -47,6 +48,7 @@
           "promptType": "reference",
           "prompt": "review:test_coverage",
           "model": "haiku",
+          "ruleFile": ".claude/rules/testing.md",
           "when": {
             "variablesPresent": [
               "session_diff"
@@ -82,6 +84,7 @@
           "promptType": "reference",
           "prompt": "review:commit_quality",
           "model": "sonnet",
+          "ruleFile": ".claude/rules/testing.md",
           "when": {
             "variablesPresent": [
               "staged_diff"
@@ -91,5 +94,5 @@
       ]
     }
   ],
-  "initSeed": "2c979cc4339d"
+  "initSeed": "291fdd02adc0"
 }

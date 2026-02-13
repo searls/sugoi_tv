@@ -46,6 +46,22 @@ final class SugoiTVUITests: XCTestCase {
       channelList.waitForExistence(timeout: 15),
       "Channel list sidebar should appear after login"
     )
+
+    // Verify player view is present
+    let playerView = app.otherElements["playerView"]
+    XCTAssertTrue(
+      playerView.waitForExistence(timeout: 5),
+      "Player view should be present after login"
+    )
+
+    #if !os(macOS)
+    // On iOS/tvOS, verify the channel guide button is visible
+    let guideButton = app.buttons["channelGuideButton"]
+    XCTAssertTrue(
+      guideButton.waitForExistence(timeout: 5),
+      "Channel guide button should be visible on iOS/tvOS"
+    )
+    #endif
   }
 
   #if os(macOS)

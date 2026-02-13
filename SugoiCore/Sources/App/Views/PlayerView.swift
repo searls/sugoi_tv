@@ -123,6 +123,7 @@ struct PassthroughPlayerView: NSViewRepresentable {
 /// Wraps AVRoutePickerView for AirPlay output selection.
 struct AirPlayPickerView: NSViewRepresentable {
   let player: AVPlayer
+  var onPresentingRoutesChanged: ((Bool) -> Void)? = nil
 
   static func makeConfiguredView(player: AVPlayer) -> AVRoutePickerView {
     let picker = AVRoutePickerView()
@@ -131,13 +132,36 @@ struct AirPlayPickerView: NSViewRepresentable {
     return picker
   }
 
+  func makeCoordinator() -> Coordinator {
+    Coordinator(onPresentingRoutesChanged: onPresentingRoutesChanged)
+  }
+
   func makeNSView(context: Context) -> AVRoutePickerView {
-    Self.makeConfiguredView(player: player)
+    let picker = Self.makeConfiguredView(player: player)
+    picker.delegate = context.coordinator
+    return picker
   }
 
   func updateNSView(_ nsView: AVRoutePickerView, context: Context) {
     if nsView.player !== player {
       nsView.player = player
+    }
+    context.coordinator.onPresentingRoutesChanged = onPresentingRoutesChanged
+  }
+
+  final class Coordinator: NSObject, AVRoutePickerViewDelegate {
+    var onPresentingRoutesChanged: ((Bool) -> Void)?
+
+    init(onPresentingRoutesChanged: ((Bool) -> Void)?) {
+      self.onPresentingRoutesChanged = onPresentingRoutesChanged
+    }
+
+    func routePickerViewWillBeginPresentingRoutes(_ routePickerView: AVRoutePickerView) {
+      onPresentingRoutesChanged?(true)
+    }
+
+    func routePickerViewDidEndPresentingRoutes(_ routePickerView: AVRoutePickerView) {
+      onPresentingRoutesChanged?(false)
     }
   }
 }
@@ -196,6 +220,7 @@ private struct PlayerControlsOverlay: View {
   @State private var scrubPosition: TimeInterval = 0
   @State private var volume: Float = 1.0
   @State private var showVolumePopover = false
+  @State private var isAirPlayPresenting = false
   @State private var playbackRate: Float = 1.0
 
   var body: some View {
@@ -346,8 +371,10 @@ private struct PlayerControlsOverlay: View {
       }
 
       // AirPlay
-      AirPlayPickerView(player: player)
-        .frame(width: 28, height: 28)
+      AirPlayPickerView(player: player) { presenting in
+        isAirPlayPresenting = presenting
+      }
+      .frame(width: 28, height: 28)
     }
     .padding(.horizontal, 16)
     .padding(.vertical, 10)
@@ -379,7 +406,7 @@ private struct PlayerControlsOverlay: View {
 
   private func scheduleHide() {
     hideTask?.cancel()
-    guard !isScrubbing && !showVolumePopover else { return }
+    guard !isScrubbing && !showVolumePopover && !isAirPlayPresenting else { return }
     hideTask = Task {
       try? await Task.sleep(for: .seconds(3))
       guard !Task.isCancelled, !isScrubbing else { return }

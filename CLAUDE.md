@@ -157,6 +157,20 @@ Read the screenshot image yourself.
 - Content: correct data displayed, no placeholder text leaking through
 - Interaction: sidebar toggles, navigation, selection highlighting
 
+## Testing Strategy
+
+Keep logic in `SugoiCore` (the local Swift package) and test it there.
+Prioritize unit tests — they're fast and reliable. Views are thin wrappers.
+
+- **Primary test command**: `script/test_fast` — runs `swift test` against
+  SugoiCore. Use this after every code change
+- **Run a single test file**: `swift test --filter <SuiteName>` from the
+  `SugoiCore/` directory
+- **Xcode scheme tests**: `RunAllTests` via Xcode MCP runs the SugoiTV scheme
+  (app-level tests, UI tests). These require credentials and are slower
+- **Never** run raw `xcodebuild test` without piping through `xcbeautify` or
+  `| tail -N`
+
 ## Development Notes
 
 - Running this app will kick any concurrent session on play.yoitv.com (and vice

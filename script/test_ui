@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# Run UI tests against a specific platform and optionally a specific test
+#
+# Usage:
+#   ./script/test_ui                              # macOS, all UI tests
+#   ./script/test_ui -p iphone                    # iPhone simulator
+#   ./script/test_ui -p appletv                   # Apple TV simulator
+#   ./script/test_ui -f testChannelListAppearsAfterLogin
+#   ./script/test_ui -p iphone -f testChannelListAppearsAfterLogin
+#
+# Platforms: mac (default), iphone, ipad, appletv
+set -e
+
+PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+PLATFORM="mac"
+FILTER=""
+
+usage() {
+  echo "Usage: $0 [-p platform] [-f test_method]"
+  echo "  -p  Platform: mac (default), iphone, ipad, appletv"
+  echo "  -f  Filter to a specific test method name"
+  exit 1
+}
+
+while getopts "p:f:h" opt; do
+  case "$opt" in
+    p) PLATFORM="$OPTARG" ;;
+    f) FILTER="$OPTARG" ;;
+    h) usage ;;
+    *) usage ;;
+  esac
+done
+
+case "$PLATFORM" in
+  mac)     DEST="platform=macOS" ;;
+  iphone)  DEST="platform=iOS Simulator,name=iPhone 16 Pro" ;;
+  ipad)    DEST="platform=iOS Simulator,name=iPad Pro 13-inch (M4)" ;;
+  appletv) DEST="platform=tvOS Simulator,name=Apple TV 4K (3rd generation)" ;;
+  *)
+    echo "Unknown platform: $PLATFORM" >&2
+    usage
+    ;;
+esac
+
+TESTING_ARG="-only-testing:SugoiTVUITests"
+if [ -n "$FILTER" ]; then
+  TESTING_ARG="-only-testing:SugoiTVUITests/SugoiTVUITests/$FILTER"
+fi
+
+echo "==> UI tests on $PLATFORM${FILTER:+ (filter: $FILTER)}"
+set -o pipefail && xcodebuild test \
+  -workspace "$PROJECT_DIR/SugoiTV.xcworkspace" \
+  -scheme SugoiTV \
+  -destination "$DEST" \
+  "$TESTING_ARG" \
+  2>&1 | xcbeautify

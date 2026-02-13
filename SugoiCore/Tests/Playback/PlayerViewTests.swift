@@ -67,6 +67,43 @@ struct AirPlayPickerViewTests {
 
     #expect(picker.isRoutePickerButtonBordered == false)
   }
+
+  @Test("coordinator calls closure with true on willBeginPresentingRoutes")
+  @MainActor
+  func coordinatorCallsTrueOnBegin() {
+    var captured: Bool?
+    let coordinator = AirPlayPickerView.Coordinator(
+      onPresentingRoutesChanged: { captured = $0 }
+    )
+
+    coordinator.routePickerViewWillBeginPresentingRoutes(AVRoutePickerView())
+
+    #expect(captured == true)
+  }
+
+  @Test("coordinator calls closure with false on didEndPresentingRoutes")
+  @MainActor
+  func coordinatorCallsFalseOnEnd() {
+    var captured: Bool?
+    let coordinator = AirPlayPickerView.Coordinator(
+      onPresentingRoutesChanged: { captured = $0 }
+    )
+
+    coordinator.routePickerViewDidEndPresentingRoutes(AVRoutePickerView())
+
+    #expect(captured == false)
+  }
+
+  @Test("coordinator with nil closure does not crash")
+  @MainActor
+  func coordinatorNilClosureNoCrash() {
+    let coordinator = AirPlayPickerView.Coordinator(
+      onPresentingRoutesChanged: nil
+    )
+
+    coordinator.routePickerViewWillBeginPresentingRoutes(AVRoutePickerView())
+    coordinator.routePickerViewDidEndPresentingRoutes(AVRoutePickerView())
+  }
 }
 #endif
 
