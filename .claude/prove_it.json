@@ -25,6 +25,7 @@
           "type": "agent",
           "promptType": "reference",
           "prompt": "review:test_investment",
+          "model": "haiku",
           "when": {
             "linesWrittenSinceLastRun": 500
           }
@@ -56,6 +57,7 @@
           "type": "agent",
           "promptType": "string",
           "prompt": "Check if any SwiftUI View files were modified in this session (look at git diff for files matching *View*.swift or in Views/ directories). If UI files were changed, check the conversation history for evidence that screenshots were taken and visually inspected by Claude directly (not just a subagent summary). If UI was changed but no screenshots were read by Claude, block and say: 'UI files were modified but not visually verified. Build the app, take screenshots, and read them yourself before stopping.'",
+          "model": "haiku",
           "when": {
             "variablesPresent": [
               "session_diff"
@@ -78,6 +80,7 @@
           "type": "agent",
           "promptType": "reference",
           "prompt": "review:commit_quality",
+          "model": "sonnet",
           "when": {
             "variablesPresent": [
               "staged_diff"
@@ -87,5 +90,5 @@
       ]
     }
   ],
-  "initSeed": "4b24945cfcdf"
+  "initSeed": "2c979cc4339d"
 }

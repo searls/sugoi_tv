@@ -5,38 +5,40 @@ import SwiftUI
 /// Passes through all events to SwiftUI overlays (e.g. the channel guide button).
 public struct PlayerView: View {
   let playerManager: PlayerManager
-  let isLive: Bool
 
-  public init(playerManager: PlayerManager, isLive: Bool = false) {
+  public init(playerManager: PlayerManager) {
     self.playerManager = playerManager
-    self.isLive = isLive
   }
 
   public var body: some View {
-    ZStack {
+    Group {
       if let player = playerManager.player {
-        SystemPlayerView(player: player, isLive: isLive)
+        SystemPlayerView(player: player)
           .ignoresSafeArea()
       } else {
         Color.black
           .ignoresSafeArea()
       }
-
-      // Error overlay (system player doesn't surface HLS errors well)
-      if case .failed(let message) = playerManager.state {
-        VStack(spacing: 12) {
-          Image(systemName: "exclamationmark.triangle")
-            .font(.largeTitle)
-          Text(message)
-            .multilineTextAlignment(.center)
-          Button("Retry") { playerManager.play() }
-            .buttonStyle(.bordered)
-        }
-        .padding()
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
-      }
     }
     .accessibilityIdentifier("playerView")
+    .alert("Playback Error", isPresented: showingError) {
+      Button("Retry") { playerManager.retry() }
+      Button("Dismiss", role: .cancel) { playerManager.clearError() }
+    } message: {
+      Text(errorMessage)
+    }
+  }
+
+  private var showingError: Binding<Bool> {
+    Binding(
+      get: { if case .failed = playerManager.state { true } else { false } },
+      set: { if !$0 { playerManager.clearError() } }
+    )
+  }
+
+  private var errorMessage: String {
+    if case .failed(let msg) = playerManager.state { return msg }
+    return ""
   }
 }
 
@@ -75,7 +77,6 @@ private class PassthroughPlayerNSView: NSView {
 
 private struct SystemPlayerView: NSViewRepresentable {
   let player: AVPlayer
-  let isLive: Bool
 
   func makeNSView(context: Context) -> PassthroughPlayerNSView {
     let view = PassthroughPlayerNSView()
@@ -119,7 +120,6 @@ private class PassthroughPlayerUIView: UIView {
 
 private struct SystemPlayerView: UIViewRepresentable {
   let player: AVPlayer
-  let isLive: Bool
 
   func makeUIView(context: Context) -> PassthroughPlayerUIView {
     let view = PassthroughPlayerUIView()

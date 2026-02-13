@@ -131,4 +131,69 @@ struct PlayerManagerTests {
     #expect(manager.isLive == true)
     #expect(manager.state == .loading)
   }
+
+  @Test("clearError resets failed state to idle")
+  @MainActor
+  func clearErrorFromFailed() {
+    let manager = PlayerManager()
+    manager.state = .failed("Stream error")
+
+    manager.clearError()
+
+    #expect(manager.state == .idle)
+  }
+
+  @Test("clearError is a no-op for non-failed states")
+  @MainActor
+  func clearErrorNoOpWhenPlaying() {
+    let manager = PlayerManager()
+    let url = URL(string: "http://test.com/stream.m3u8")!
+    manager.loadVODStream(url: url, referer: "http://play.yoitv.com")
+    manager.play()
+
+    manager.clearError()
+
+    #expect(manager.state == .playing)
+  }
+
+  @Test("retry re-creates player when state is failed")
+  @MainActor
+  func retryReCreatesPlayer() {
+    let manager = PlayerManager()
+    let url = URL(string: "http://test.com/stream.m3u8")!
+    manager.loadLiveStream(url: url, referer: "http://play.yoitv.com")
+    let firstPlayer = manager.player
+
+    manager.state = .failed("Network error")
+    manager.retry()
+
+    #expect(manager.state == .loading)
+    #expect(manager.player !== firstPlayer, "retry should create a new player")
+    #expect(manager.player != nil)
+  }
+
+  @Test("retry is a no-op when not in failed state")
+  @MainActor
+  func retryNoOpWhenNotFailed() {
+    let manager = PlayerManager()
+    let url = URL(string: "http://test.com/stream.m3u8")!
+    manager.loadLiveStream(url: url, referer: "http://play.yoitv.com")
+    let player = manager.player
+
+    manager.retry()
+
+    #expect(manager.player === player, "retry should not touch a non-failed player")
+  }
+
+  @Test("retry is a no-op when no stream has been loaded")
+  @MainActor
+  func retryNoOpWithoutStream() {
+    let manager = PlayerManager()
+    manager.state = .failed("Error")
+
+    manager.retry()
+
+    // No lastStreamInfo, so retry should be a no-op
+    #expect(manager.player == nil)
+  }
 }

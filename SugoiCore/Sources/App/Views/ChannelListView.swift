@@ -73,7 +73,7 @@ public struct ChannelListView: View {
       ForEach(viewModel.filteredGroups, id: \.category) { group in
         Section(group.category) {
           ForEach(group.channels, id: \.id) { channel in
-            ChannelRow(channel: channel, channelListHost: "")
+            ChannelRow(channel: channel)
               .contentShape(Rectangle())
               .onTapGesture { onSelectChannel(channel) }
           }
@@ -86,7 +86,6 @@ public struct ChannelListView: View {
 
 struct ChannelRow: View {
   let channel: ChannelDTO
-  let channelListHost: String
 
   var body: some View {
     HStack(spacing: 12) {

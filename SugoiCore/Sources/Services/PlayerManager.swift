@@ -17,7 +17,7 @@ public enum PlaybackState: Sendable, Equatable {
 @MainActor
 @Observable
 public final class PlayerManager {
-  public private(set) var state: PlaybackState = .idle
+  public internal(set) var state: PlaybackState = .idle
   public private(set) var currentTime: TimeInterval = 0
   public private(set) var duration: TimeInterval = 0
   public private(set) var isLive: Bool = false
@@ -29,6 +29,7 @@ public final class PlayerManager {
   nonisolated(unsafe) private var timeObserver: Any?
   private var statusObservation: NSKeyValueObservation?
   private var rateObservation: NSKeyValueObservation?
+  private var lastStreamInfo: (url: URL, referer: String, isLive: Bool, resumeFrom: TimeInterval)?
 
   public init() {}
 
@@ -36,12 +37,14 @@ public final class PlayerManager {
 
   /// Load a live stream with referer header
   public func loadLiveStream(url: URL, referer: String) {
+    lastStreamInfo = (url: url, referer: referer, isLive: true, resumeFrom: 0)
     let asset = makeAsset(url: url, referer: referer)
     loadAsset(asset, isLive: true)
   }
 
   /// Load a VOD stream with referer header and optional resume position
   public func loadVODStream(url: URL, referer: String, resumeFrom: TimeInterval = 0) {
+    lastStreamInfo = (url: url, referer: referer, isLive: false, resumeFrom: resumeFrom)
     let asset = makeAsset(url: url, referer: referer)
     loadAsset(asset, isLive: false, resumeFrom: resumeFrom)
   }
@@ -100,7 +103,20 @@ public final class PlayerManager {
 
   public func stop() {
     cleanup()
+    lastStreamInfo = nil
     state = .idle
+  }
+
+  public func clearError() {
+    if case .failed = state { state = .idle }
+  }
+
+  /// Re-create the player from the last-loaded stream. AVPlayer ignores play()
+  /// on a failed AVPlayerItem, so we must build a fresh item to recover.
+  public func retry() {
+    guard case .failed = state, let info = lastStreamInfo else { return }
+    let asset = makeAsset(url: info.url, referer: info.referer)
+    loadAsset(asset, isLive: info.isLive, resumeFrom: info.resumeFrom)
   }
 
   // MARK: - Observation

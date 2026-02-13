@@ -35,30 +35,72 @@ public struct SugoiTVRootView: View {
   }
 }
 
+// MARK: - Shared playback controller
+
+@MainActor @Observable
+final class ChannelPlaybackController {
+  let playerManager = PlayerManager()
+  let channelListVM: ChannelListViewModel
+  var selectedChannel: ChannelDTO?
+  @ObservationIgnored @AppStorage("lastChannelId") var lastChannelId: String = ""
+
+  private let session: AuthService.Session
+
+  init(appState: AppState, session: AuthService.Session) {
+    self.session = session
+    self.channelListVM = ChannelListViewModel(
+      channelService: appState.channelService,
+      config: session.productConfig
+    )
+  }
+
+  func loadAndAutoSelect() async {
+    await channelListVM.loadChannels()
+    let allChannels = channelListVM.channelGroups.flatMap(\.channels)
+    if !lastChannelId.isEmpty,
+       let channel = allChannels.first(where: { $0.id == lastChannelId }) {
+      selectedChannel = channel
+    } else if let live = allChannels.first(where: { $0.running == 1 }) {
+      selectedChannel = live
+    } else if let first = allChannels.first {
+      selectedChannel = first
+    }
+  }
+
+  func playChannel(_ channel: ChannelDTO) {
+    lastChannelId = channel.id
+    guard let url = StreamURLBuilder.liveStreamURL(
+      liveHost: session.productConfig.liveHost,
+      playpath: channel.playpath,
+      accessToken: session.accessToken
+    ) else { return }
+
+    let referer = session.productConfig.vmsReferer
+    playerManager.loadLiveStream(url: url, referer: referer)
+    playerManager.setNowPlayingInfo(title: channel.name, isLiveStream: true)
+  }
+}
+
+// MARK: - iOS overlay sidebar layout
+
 /// Video-first layout: player fills the window, channel guide slides in as a sidebar
 private struct AuthenticatedContainer: View {
   let appState: AppState
-  let session: AuthService.Session
-  @State private var playerManager = PlayerManager()
-  @State private var channelListVM: ChannelListViewModel
-  @State private var selectedChannel: ChannelDTO?
+  @State private var controller: ChannelPlaybackController
   @State private var showingGuide = false
-  @AppStorage("lastChannelId") private var lastChannelId: String = ""
 
   private let sidebarWidth: CGFloat = 340
 
   init(appState: AppState, session: AuthService.Session) {
     self.appState = appState
-    self.session = session
-    self._channelListVM = State(initialValue: ChannelListViewModel(
-      channelService: appState.channelService,
-      config: session.productConfig
+    self._controller = State(initialValue: ChannelPlaybackController(
+      appState: appState, session: session
     ))
   }
 
   var body: some View {
     ZStack(alignment: .topLeading) {
-      PlayerView(playerManager: playerManager, isLive: playerManager.isLive)
+      PlayerView(playerManager: controller.playerManager)
         .allowsHitTesting(false)
 
       if showingGuide {
@@ -75,14 +117,9 @@ private struct AuthenticatedContainer: View {
       }
     }
     .ignoresSafeArea()
-    .task {
-      await channelListVM.loadChannels()
-      autoSelectChannel()
-    }
-    .onChange(of: selectedChannel) { _, channel in
-      if let channel {
-        playChannel(channel)
-      }
+    .task { await controller.loadAndAutoSelect() }
+    .onChange(of: controller.selectedChannel) { _, channel in
+      if let channel { controller.playChannel(channel) }
     }
   }
 
@@ -111,9 +148,9 @@ private struct AuthenticatedContainer: View {
       .padding()
 
       ChannelListView(
-        viewModel: channelListVM,
+        viewModel: controller.channelListVM,
         onSelectChannel: { channel in
-          selectedChannel = channel
+          controller.selectedChannel = channel
           withAnimation { showingGuide = false }
         }
       )
@@ -131,52 +168,21 @@ private struct AuthenticatedContainer: View {
     .frame(maxHeight: .infinity)
     .background(.ultraThinMaterial)
   }
-
-  private func autoSelectChannel() {
-    let allChannels = channelListVM.channelGroups.flatMap(\.channels)
-    if !lastChannelId.isEmpty,
-       let channel = allChannels.first(where: { $0.id == lastChannelId }) {
-      selectedChannel = channel
-    } else if let live = allChannels.first(where: { $0.running == 1 }) {
-      selectedChannel = live
-    } else if let first = allChannels.first {
-      selectedChannel = first
-    }
-  }
-
-  private func playChannel(_ channel: ChannelDTO) {
-    lastChannelId = channel.id
-    guard let url = StreamURLBuilder.liveStreamURL(
-      liveHost: session.productConfig.liveHost,
-      playpath: channel.playpath,
-      accessToken: session.accessToken
-    ) else { return }
-
-    let referer = session.productConfig.vmsReferer
-    playerManager.loadLiveStream(url: url, referer: referer)
-    playerManager.setNowPlayingInfo(title: channel.name, isLiveStream: true)
-  }
 }
 
-// MARK: - macOS native sidebar
+// MARK: - macOS native sidebar layout
 
 #if os(macOS)
 /// Native NavigationSplitView layout for macOS: sidebar with channel list, detail with player
 private struct MacAuthenticatedContainer: View {
   let appState: AppState
-  let session: AuthService.Session
-  @State private var playerManager = PlayerManager()
-  @State private var channelListVM: ChannelListViewModel
-  @State private var selectedChannel: ChannelDTO?
+  @State private var controller: ChannelPlaybackController
   @State private var columnVisibility: NavigationSplitViewVisibility = .doubleColumn
-  @AppStorage("lastChannelId") private var lastChannelId: String = ""
 
   init(appState: AppState, session: AuthService.Session) {
     self.appState = appState
-    self.session = session
-    self._channelListVM = State(initialValue: ChannelListViewModel(
-      channelService: appState.channelService,
-      config: session.productConfig
+    self._controller = State(initialValue: ChannelPlaybackController(
+      appState: appState, session: session
     ))
   }
 
@@ -185,38 +191,33 @@ private struct MacAuthenticatedContainer: View {
       sidebarContent
         .navigationSplitViewColumnWidth(min: 220, ideal: 280, max: 360)
     } detail: {
-      PlayerView(playerManager: playerManager, isLive: playerManager.isLive)
+      PlayerView(playerManager: controller.playerManager)
         .ignoresSafeArea()
     }
-    .task {
-      await channelListVM.loadChannels()
-      autoSelectChannel()
-    }
-    .onChange(of: selectedChannel) { _, channel in
-      if let channel {
-        playChannel(channel)
-      }
+    .task { await controller.loadAndAutoSelect() }
+    .onChange(of: controller.selectedChannel) { _, channel in
+      if let channel { controller.playChannel(channel) }
     }
   }
 
   private var sidebarContent: some View {
     Group {
-      if channelListVM.isLoading && channelListVM.channelGroups.isEmpty {
+      if controller.channelListVM.isLoading && controller.channelListVM.channelGroups.isEmpty {
         ProgressView("Loading channels...")
-      } else if let error = channelListVM.errorMessage, channelListVM.channelGroups.isEmpty {
+      } else if let error = controller.channelListVM.errorMessage, controller.channelListVM.channelGroups.isEmpty {
         ContentUnavailableView {
           Label("Error", systemImage: "exclamationmark.triangle")
         } description: {
           Text(error)
         } actions: {
-          Button("Retry") { Task { await channelListVM.loadChannels() } }
+          Button("Retry") { Task { await controller.channelListVM.loadChannels() } }
         }
       } else {
-        List(selection: $selectedChannel) {
-          ForEach(channelListVM.filteredGroups, id: \.category) { group in
+        List(selection: $controller.selectedChannel) {
+          ForEach(controller.channelListVM.filteredGroups, id: \.category) { group in
             Section(group.category) {
               ForEach(group.channels) { channel in
-                ChannelRow(channel: channel, channelListHost: "")
+                ChannelRow(channel: channel)
                   .tag(channel)
               }
             }
@@ -226,31 +227,6 @@ private struct MacAuthenticatedContainer: View {
         .accessibilityIdentifier("channelList")
       }
     }
-  }
-
-  private func autoSelectChannel() {
-    let allChannels = channelListVM.channelGroups.flatMap(\.channels)
-    if !lastChannelId.isEmpty,
-       let channel = allChannels.first(where: { $0.id == lastChannelId }) {
-      selectedChannel = channel
-    } else if let live = allChannels.first(where: { $0.running == 1 }) {
-      selectedChannel = live
-    } else if let first = allChannels.first {
-      selectedChannel = first
-    }
-  }
-
-  private func playChannel(_ channel: ChannelDTO) {
-    lastChannelId = channel.id
-    guard let url = StreamURLBuilder.liveStreamURL(
-      liveHost: session.productConfig.liveHost,
-      playpath: channel.playpath,
-      accessToken: session.accessToken
-    ) else { return }
-
-    let referer = session.productConfig.vmsReferer
-    playerManager.loadLiveStream(url: url, referer: referer)
-    playerManager.setNowPlayingInfo(title: channel.name, isLiveStream: true)
   }
 }
 #endif
