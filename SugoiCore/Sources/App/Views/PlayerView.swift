@@ -480,6 +480,24 @@ private struct PlayerViewPreview: View {
   PlayerViewPreview()
 }
 
+private struct PlayerViewLivePreview: View {
+  @State private var manager = PlayerManager()
+
+  var body: some View {
+    PlayerView(playerManager: manager)
+      .onAppear {
+        manager.loadLiveStream(
+          url: URL(string: "http://example.com/test.M3U8")!,
+          referer: "http://preview.local"
+        )
+      }
+  }
+}
+
+#Preview("Player (Live)") {
+  PlayerViewLivePreview()
+}
+
 // MARK: - Extracted drag-gesture math (internal for testability)
 
 enum PlayerControlMath {
