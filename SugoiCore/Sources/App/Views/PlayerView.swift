@@ -279,20 +279,39 @@ private struct PlayerControlsOverlay: View {
           .foregroundStyle(.secondary)
 
         if playerManager.duration > 0 {
-          Slider(
-            value: scrubBinding,
-            in: 0...max(playerManager.duration, 1)
-          ) { editing in
-            isScrubbing = editing
-            if editing {
-              scrubPosition = playerManager.currentTime
-              cancelHide()
-            } else {
-              playerManager.seek(to: scrubPosition)
-              scheduleHide()
+          GeometryReader { geo in
+            let width = geo.size.width
+            let fraction = playerManager.duration > 0
+              ? CGFloat(currentDisplayTime / playerManager.duration)
+              : 0
+            ZStack(alignment: .leading) {
+              RoundedRectangle(cornerRadius: 2)
+                .fill(.tertiary)
+              RoundedRectangle(cornerRadius: 2)
+                .fill(.white)
+                .frame(width: width * min(max(fraction, 0), 1))
             }
+            .frame(height: 4)
+            .frame(maxHeight: .infinity)
+            .contentShape(Rectangle())
+            .gesture(
+              DragGesture(minimumDistance: 0)
+                .onChanged { value in
+                  if !isScrubbing {
+                    isScrubbing = true
+                    scrubPosition = playerManager.currentTime
+                    cancelHide()
+                  }
+                  let pct = min(max(value.location.x / width, 0), 1)
+                  scrubPosition = Double(pct) * playerManager.duration
+                }
+                .onEnded { _ in
+                  playerManager.seek(to: scrubPosition)
+                  isScrubbing = false
+                  scheduleHide()
+                }
+            )
           }
-          .tint(.white)
         } else {
           Spacer()
         }
@@ -400,13 +419,6 @@ private struct PlayerControlsOverlay: View {
 
   private var currentDisplayTime: TimeInterval {
     isScrubbing ? scrubPosition : playerManager.currentTime
-  }
-
-  private var scrubBinding: Binding<Double> {
-    Binding(
-      get: { isScrubbing ? scrubPosition : playerManager.currentTime },
-      set: { scrubPosition = $0 }
-    )
   }
 
   private var volumeIcon: String {
