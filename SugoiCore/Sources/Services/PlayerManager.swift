@@ -61,7 +61,6 @@ public final class PlayerManager {
 
     let item = AVPlayerItem(asset: asset)
     let player = AVPlayer(playerItem: item)
-    player.allowsExternalPlayback = false
     self._player = player
 
     observePlayer(player, resumeFrom: resumeFrom)

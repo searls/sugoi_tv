@@ -196,15 +196,4 @@ struct PlayerManagerTests {
     // No lastStreamInfo, so retry should be a no-op
     #expect(manager.player == nil)
   }
-
-  @Test("External playback is disabled to force AirPlay mirroring")
-  @MainActor
-  func externalPlaybackDisabled() {
-    let manager = PlayerManager()
-    let url = URL(string: "http://live.yoitv.com:9083/query/s/test.M3U8?type=live")!
-
-    manager.loadLiveStream(url: url, referer: "http://play.yoitv.com")
-
-    #expect(manager.player?.allowsExternalPlayback == false)
-  }
 }
