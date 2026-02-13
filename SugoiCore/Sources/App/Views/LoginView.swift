@@ -1,3 +1,4 @@
+import AuthenticationServices
 import SwiftUI
 
 @MainActor
@@ -12,6 +13,12 @@ public final class LoginViewModel {
 
   public init(loginAction: @escaping (String, String) async throws -> Void) {
     self.loginAction = loginAction
+  }
+
+  func loginWithCredentials(cid: String, password: String) async {
+    customerID = cid
+    self.password = password
+    await login()
   }
 
   func login() async {
@@ -44,6 +51,9 @@ public final class LoginViewModel {
 
 public struct LoginView: View {
   @Bindable var viewModel: LoginViewModel
+  #if os(iOS) || os(tvOS)
+  @Environment(\.authorizationController) private var authorizationController
+  #endif
 
   public init(viewModel: LoginViewModel) {
     self.viewModel = viewModel
@@ -97,5 +107,26 @@ public struct LoginView: View {
     }
     .padding(32)
     .frame(maxWidth: 400)
+    #if os(iOS) || os(tvOS)
+    .task {
+      await requestSavedCredentials()
+    }
+    #endif
   }
+
+  #if os(iOS) || os(tvOS)
+  private func requestSavedCredentials() async {
+    let request = ASAuthorizationPasswordProvider().createRequest()
+    do {
+      let result = try await authorizationController.performAutoFillAssistedRequest(request)
+      if case .password(let credential) = result {
+        await viewModel.loginWithCredentials(
+          cid: credential.user, password: credential.password
+        )
+      }
+    } catch {
+      // No saved credentials selected — manual form takes over
+    }
+  }
+  #endif
 }
