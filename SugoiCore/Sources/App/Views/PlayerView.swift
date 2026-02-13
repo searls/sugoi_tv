@@ -340,10 +340,27 @@ private struct PlayerControlsOverlay: View {
       .buttonStyle(.borderless)
       .popover(isPresented: $showVolumePopover, arrowEdge: .bottom) {
         VStack(spacing: 8) {
-          Slider(value: $volume, in: 0...1)
-            .frame(width: 100)
-            .rotationEffect(.degrees(-90))
-            .frame(width: 32, height: 100)
+          GeometryReader { geo in
+            let height = geo.size.height
+            ZStack(alignment: .bottom) {
+              RoundedRectangle(cornerRadius: 2)
+                .fill(.tertiary)
+              RoundedRectangle(cornerRadius: 2)
+                .fill(.white)
+                .frame(height: height * CGFloat(volume))
+            }
+            .frame(width: 4)
+            .frame(maxWidth: .infinity)
+            .contentShape(Rectangle())
+            .gesture(
+              DragGesture(minimumDistance: 0)
+                .onChanged { value in
+                  let fraction = 1.0 - (value.location.y / height)
+                  volume = Float(min(max(fraction, 0), 1))
+                }
+            )
+          }
+          .frame(width: 32, height: 100)
           Image(systemName: volumeIcon)
             .font(.caption)
             .foregroundStyle(.secondary)
