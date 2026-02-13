@@ -18,20 +18,55 @@ public struct SugoiTVRootView: View {
         AuthenticatedContainer(appState: appState, session: session)
         #endif
       } else {
-        loginView
+        #if os(macOS)
+        MacSignedOutPlaceholder()
+        #else
+        LoginView(
+          viewModel: LoginViewModel(
+            loginAction: { cid, password in
+              try await appState.login(cid: cid, password: password)
+            }
+          )
+        )
+        #endif
       }
     }
     .task { await appState.restoreSession() }
   }
+}
 
-  private var loginView: some View {
-    LoginView(
-      viewModel: LoginViewModel(
-        loginAction: { cid, password in
-          try await appState.login(cid: cid, password: password)
-        }
-      )
-    )
+#if os(macOS)
+/// Placeholder shown in the main window when not signed in on macOS.
+/// Login lives in Settings (⌘,) so the user is directed there.
+private struct MacSignedOutPlaceholder: View {
+  @Environment(\.openSettings) private var openSettings
+
+  var body: some View {
+    ContentUnavailableView {
+      Label("Not Signed In", systemImage: "person.crop.circle.badge.questionmark")
+    } description: {
+      Text("Open Settings to sign in to your YoiTV account.")
+    } actions: {
+      Button("Open Settings…") {
+        openSettings()
+      }
+      .buttonStyle(.borderedProminent)
+      .keyboardShortcut(",", modifiers: .command)
+    }
+  }
+}
+#endif
+
+// MARK: - Permission error detection
+
+private extension String {
+  /// Matches common AVFoundation error messages for HTTP 403 / expired-token failures.
+  var looksLikePermissionError: Bool {
+    let lowered = localizedLowercase
+    return lowered.contains("permission")
+        || lowered.contains("authorized")
+        || lowered.contains("forbidden")
+        || lowered.contains("403")
   }
 }
 
@@ -44,7 +79,10 @@ final class ChannelPlaybackController {
   var selectedChannel: ChannelDTO?
   @ObservationIgnored @AppStorage("lastChannelId") var lastChannelId: String = ""
 
-  private let session: AuthService.Session
+  var session: AuthService.Session
+  /// One-shot guard: allows a single reauth attempt per stream load.
+  /// Reset to false in playChannel(), set to true after attempting reauth.
+  var hasAttemptedReauth = false
 
   init(appState: AppState, session: AuthService.Session) {
     self.session = session
@@ -68,6 +106,7 @@ final class ChannelPlaybackController {
   }
 
   func playChannel(_ channel: ChannelDTO) {
+    hasAttemptedReauth = false
     lastChannelId = channel.id
     guard let url = StreamURLBuilder.liveStreamURL(
       liveHost: session.productConfig.liveHost,
@@ -120,6 +159,22 @@ private struct AuthenticatedContainer: View {
     .task { await controller.loadAndAutoSelect() }
     .onChange(of: controller.selectedChannel) { _, channel in
       if let channel { controller.playChannel(channel) }
+    }
+    .onChange(of: controller.playerManager.state) { _, newState in
+      if case .failed(let message) = newState,
+         message.looksLikePermissionError,
+         !controller.hasAttemptedReauth {
+        controller.hasAttemptedReauth = true
+        controller.playerManager.clearError()
+        Task {
+          if let newSession = await appState.reauthenticate() {
+            controller.session = newSession
+            if let channel = controller.selectedChannel {
+              controller.playChannel(channel)
+            }
+          }
+        }
+      }
     }
   }
 
@@ -178,6 +233,7 @@ private struct MacAuthenticatedContainer: View {
   let appState: AppState
   @State private var controller: ChannelPlaybackController
   @State private var columnVisibility: NavigationSplitViewVisibility = .doubleColumn
+  @Environment(\.openSettings) private var openSettings
 
   init(appState: AppState, session: AuthService.Session) {
     self.appState = appState
@@ -197,6 +253,24 @@ private struct MacAuthenticatedContainer: View {
     .task { await controller.loadAndAutoSelect() }
     .onChange(of: controller.selectedChannel) { _, channel in
       if let channel { controller.playChannel(channel) }
+    }
+    .onChange(of: controller.playerManager.state) { _, newState in
+      if case .failed(let message) = newState,
+         message.looksLikePermissionError,
+         !controller.hasAttemptedReauth {
+        controller.hasAttemptedReauth = true
+        controller.playerManager.clearError()
+        Task {
+          if let newSession = await appState.reauthenticate() {
+            controller.session = newSession
+            if let channel = controller.selectedChannel {
+              controller.playChannel(channel)
+            }
+          } else {
+            openSettings()
+          }
+        }
+      }
     }
   }
 

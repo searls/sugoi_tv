@@ -33,11 +33,16 @@ source of truth for how to interact with the YoiTV service.
 ### Authentication
 - Device ID: generate a random 32-character hex string on first launch, persist
   in Keychain, reuse forever
-- Store `access_token`, `refresh_token`, `cid`, and the parsed `product_config`
-  in Keychain
+- Store `access_token`, `refresh_token`, `cid`, `product_config`, and the
+  user's `password` in Keychain. Password enables silent re-authentication when
+  the stream returns a permission error (expired token). Cleared on explicit
+  logout
 - Refresh tokens on a 30-minute background timer; compare against `server_time`
   from the API (not local clock) to handle clock skew
 - On refresh failure with `AUTH` code, clear session and present login
+- On stream permission error, attempt silent re-login with stored credentials.
+  Only fall back to logout + login screen if re-login fails with an auth error.
+  Transient network errors during re-auth leave the session and password intact
 
 ### Networking
 - All server hostnames come from `product_config` in the login response. Never

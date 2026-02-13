@@ -9,11 +9,18 @@ final class SugoiTVUITests: XCTestCase {
     app.launch()
 
     let customerID = app.textFields["Customer ID"]
+    #if os(macOS)
+    let openSettingsButton = app.buttons["Open Settings…"]
+    #endif
 
     // Wait for the app to finish restoring session or show login
     var ready = false
     for i in 0..<30 {
+      #if os(macOS)
+      if app.outlines.firstMatch.exists || openSettingsButton.exists { ready = true; break }
+      #else
       if app.outlines.firstMatch.exists || customerID.exists { ready = true; break }
+      #endif
       if i == 5 {
         print("Poll \(i): outline=\(app.outlines.firstMatch.exists) customerID=\(customerID.exists)")
         print(app.debugDescription)
@@ -22,9 +29,16 @@ final class SugoiTVUITests: XCTestCase {
     }
     XCTAssertTrue(ready, "App should show either channel list or login screen")
 
+    #if os(macOS)
+    if openSettingsButton.exists {
+      openSettingsButton.tap()
+      login(app: app, user: user, pass: pass)
+    }
+    #else
     if customerID.exists {
       login(app: app, user: user, pass: pass)
     }
+    #endif
 
     // On macOS the sidebar uses a native List which appears as an outline
     let channelList = app.outlines.firstMatch
@@ -41,17 +55,19 @@ final class SugoiTVUITests: XCTestCase {
     let app = XCUIApplication()
     app.launch()
 
-    let customerID = app.textFields["Customer ID"]
+    let openSettingsButton = app.buttons["Open Settings…"]
 
-    // Wait for the app to finish restoring session or show login
+    // Wait for the app to finish restoring session or show login/placeholder
     var ready = false
     for _ in 0..<30 {
-      if app.outlines.firstMatch.exists || customerID.exists { ready = true; break }
+      if app.outlines.firstMatch.exists || openSettingsButton.exists { ready = true; break }
       Thread.sleep(forTimeInterval: 1)
     }
-    XCTAssertTrue(ready, "App should show either channel list or login screen")
+    XCTAssertTrue(ready, "App should show either channel list or signed-out placeholder")
 
-    if customerID.exists {
+    if openSettingsButton.exists {
+      // Not logged in — open settings and log in there
+      openSettingsButton.tap()
       login(app: app, user: user, pass: pass)
       let channelList = app.outlines.firstMatch
       XCTAssertTrue(channelList.waitForExistence(timeout: 15), "Should be logged in")

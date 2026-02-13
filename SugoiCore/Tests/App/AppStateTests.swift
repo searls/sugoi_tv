@@ -133,3 +133,136 @@ struct AppStateRestoreSessionTests {
     #expect(appState.isRestoringSession == false)
   }
 }
+
+@Suite("AppState.reauthenticate")
+@MainActor
+struct AppStateReauthenticateTests {
+  nonisolated static let loginJSON = """
+    {
+      "access_token": "fresh_token",
+      "token_type": "bearer",
+      "expires_in": 1770770216,
+      "refresh_token": "fresh_refresh",
+      "expired": false,
+      "disabled": false,
+      "confirmed": true,
+      "cid": "AABC538835997",
+      "type": "tvum_cid",
+      "trial": 0,
+      "create_time": 1652403783,
+      "expire_time": 1782959503,
+      "product_config": "{\\"vms_host\\":\\"http://live.yoitv.com:9083\\",\\"vms_vod_host\\":\\"http://vod.yoitv.com:9083\\",\\"vms_uid\\":\\"UID1\\",\\"vms_live_cid\\":\\"CID1\\",\\"vms_referer\\":\\"http://play.yoitv.com\\",\\"epg_days\\":30,\\"single\\":\\"https://crm.yoitv.com/single.sjs\\"}",
+      "server_time": 1770755816,
+      "code": "OK"
+    }
+    """
+
+  private func makeAppState(
+    keychain: MockKeychainService = MockKeychainService(),
+    mock: MockHTTPSession
+  ) -> AppState {
+    let client = APIClient(session: mock.session)
+    let auth = AuthService(keychain: keychain, apiClient: client)
+    let channels = ChannelService(apiClient: client)
+    let epg = EPGService(apiClient: client)
+    return AppState(
+      apiClient: client,
+      authService: auth,
+      channelService: channels,
+      epgService: epg
+    )
+  }
+
+  @Test("Reauthenticate success returns new session and updates appState")
+  func reauthenticateSuccess() async throws {
+    let keychain = MockKeychainService()
+    try await keychain.storeSession(
+      accessToken: "old_token", refreshToken: "old_refresh",
+      cid: "AABC538835997",
+      productConfigJSON: #"{"vms_host":"http://live.yoitv.com:9083","vms_vod_host":"http://vod.yoitv.com:9083","vms_uid":"UID1","vms_live_cid":"CID1","vms_referer":"http://play.yoitv.com","epg_days":30,"single":"https://crm.yoitv.com/single.sjs"}"#
+    )
+    try await keychain.storePassword("testpass")
+
+    let mock = MockHTTPSession()
+    mock.requestHandler = { request in
+      let response = HTTPURLResponse(
+        url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil
+      )!
+      return (response, Data(Self.loginJSON.utf8))
+    }
+
+    let appState = makeAppState(keychain: keychain, mock: mock)
+    // Give it a stale session so we're in "authenticated" state
+    appState.session = AuthService.Session(
+      accessToken: "old_token", refreshToken: "old_refresh",
+      cid: "AABC538835997",
+      config: try JSONDecoder().decode(
+        ProductConfig.self,
+        from: Data(#"{"vms_host":"http://live.yoitv.com:9083","vms_vod_host":"http://vod.yoitv.com:9083","vms_uid":"UID1","vms_live_cid":"CID1","vms_referer":"http://play.yoitv.com","epg_days":30,"single":"https://crm.yoitv.com/single.sjs"}"#.utf8)
+      )
+    )
+
+    let result = await appState.reauthenticate()
+
+    #expect(result != nil)
+    #expect(result?.accessToken == "fresh_token")
+    #expect(appState.session?.accessToken == "fresh_token")
+  }
+
+  @Test("Reauthenticate auth failure logs out and returns nil")
+  func reauthenticateAuthFailure() async throws {
+    let keychain = MockKeychainService()
+    // No stored password → reauthenticateWithStoredCredentials throws AuthError.noSession
+
+    let mock = MockHTTPSession()
+    let appState = makeAppState(keychain: keychain, mock: mock)
+    appState.session = AuthService.Session(
+      accessToken: "old_token", refreshToken: "old_refresh",
+      cid: "AABC538835997",
+      config: try JSONDecoder().decode(
+        ProductConfig.self,
+        from: Data(#"{"vms_host":"http://live.yoitv.com:9083","vms_vod_host":"http://vod.yoitv.com:9083","vms_uid":"UID1","vms_live_cid":"CID1","vms_referer":"http://play.yoitv.com","epg_days":30,"single":"https://crm.yoitv.com/single.sjs"}"#.utf8)
+      )
+    )
+
+    let result = await appState.reauthenticate()
+
+    #expect(result == nil)
+    #expect(appState.session == nil)
+  }
+
+  @Test("Reauthenticate network error preserves session and password")
+  func reauthenticateNetworkError() async throws {
+    let keychain = MockKeychainService()
+    try await keychain.storeSession(
+      accessToken: "old_token", refreshToken: "old_refresh",
+      cid: "AABC538835997",
+      productConfigJSON: #"{"vms_host":"http://live.yoitv.com:9083","vms_vod_host":"http://vod.yoitv.com:9083","vms_uid":"UID1","vms_live_cid":"CID1","vms_referer":"http://play.yoitv.com","epg_days":30,"single":"https://crm.yoitv.com/single.sjs"}"#
+    )
+    try await keychain.storePassword("testpass")
+
+    let mock = MockHTTPSession()
+    mock.requestHandler = { _ in
+      throw URLError(.notConnectedToInternet)
+    }
+
+    let appState = makeAppState(keychain: keychain, mock: mock)
+    let config = try JSONDecoder().decode(
+      ProductConfig.self,
+      from: Data(#"{"vms_host":"http://live.yoitv.com:9083","vms_vod_host":"http://vod.yoitv.com:9083","vms_uid":"UID1","vms_live_cid":"CID1","vms_referer":"http://play.yoitv.com","epg_days":30,"single":"https://crm.yoitv.com/single.sjs"}"#.utf8)
+    )
+    appState.session = AuthService.Session(
+      accessToken: "old_token", refreshToken: "old_refresh",
+      cid: "AABC538835997", config: config
+    )
+
+    let result = await appState.reauthenticate()
+
+    // Returns nil (couldn't reauth) but does NOT logout
+    #expect(result == nil)
+    // Session and password preserved — not wiped
+    #expect(appState.session != nil)
+    #expect(appState.session?.accessToken == "old_token")
+    #expect(try await keychain.password() == "testpass")
+  }
+}

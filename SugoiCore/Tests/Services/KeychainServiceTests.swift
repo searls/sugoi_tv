@@ -69,6 +69,26 @@ struct KeychainServiceTests {
     #expect(id == "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA1")
   }
 
+  @Test("MockKeychainService stores and retrieves password")
+  func mockStoresPassword() async throws {
+    let mock = MockKeychainService()
+    try await mock.storePassword("secret123")
+    #expect(try await mock.password() == "secret123")
+  }
+
+  @Test("clearSession also clears password")
+  func clearRemovesPassword() async throws {
+    let mock = MockKeychainService()
+    try await mock.storePassword("secret123")
+    try await mock.storeSession(
+      accessToken: "t", refreshToken: "r", cid: "c", productConfigJSON: "{}"
+    )
+    try await mock.clearSession()
+
+    #expect(try await mock.password() == nil)
+    #expect(try await mock.accessToken() == nil)
+  }
+
   @Test("clearSession does not remove device ID")
   func clearPreservesDeviceID() async throws {
     let mock = MockKeychainService()

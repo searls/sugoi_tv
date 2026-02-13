@@ -12,6 +12,8 @@ public protocol KeychainServiceProtocol: Sendable {
   func refreshToken() async throws -> String?
   func cid() async throws -> String?
   func productConfigJSON() async throws -> String?
+  func storePassword(_ password: String) async throws
+  func password() async throws -> String?
   func clearSession() async throws
 }
 
@@ -60,6 +62,7 @@ public actor KeychainService: KeychainServiceProtocol {
 
   // MARK: - Session credentials
 
+  private static let passwordKey = "password"
   private static let accessTokenKey = "access_token"
   private static let refreshTokenKey = "refresh_token"
   private static let cidKey = "cid"
@@ -72,6 +75,14 @@ public actor KeychainService: KeychainServiceProtocol {
     try setString(refreshToken, forKey: Self.refreshTokenKey)
     try setString(cid, forKey: Self.cidKey)
     try setString(productConfigJSON, forKey: Self.productConfigKey)
+  }
+
+  public func storePassword(_ password: String) async throws {
+    try setString(password, forKey: Self.passwordKey)
+  }
+
+  public func password() async throws -> String? {
+    try? getString(forKey: Self.passwordKey)
   }
 
   public func accessToken() async throws -> String? {
@@ -91,7 +102,7 @@ public actor KeychainService: KeychainServiceProtocol {
   }
 
   public func clearSession() async throws {
-    for key in [Self.accessTokenKey, Self.refreshTokenKey, Self.cidKey, Self.productConfigKey] {
+    for key in [Self.accessTokenKey, Self.refreshTokenKey, Self.cidKey, Self.productConfigKey, Self.passwordKey] {
       try? deleteItem(forKey: key)
     }
   }
@@ -193,6 +204,11 @@ public actor MockKeychainService: KeychainServiceProtocol {
     store["product_config"] = productConfigJSON
   }
 
+  public func storePassword(_ password: String) async throws {
+    store["password"] = password
+  }
+
+  public func password() async throws -> String? { store["password"] }
   public func accessToken() async throws -> String? { store["access_token"] }
   public func refreshToken() async throws -> String? { store["refresh_token"] }
   public func cid() async throws -> String? { store["cid"] }
@@ -203,5 +219,6 @@ public actor MockKeychainService: KeychainServiceProtocol {
     store.removeValue(forKey: "refresh_token")
     store.removeValue(forKey: "cid")
     store.removeValue(forKey: "product_config")
+    store.removeValue(forKey: "password")
   }
 }

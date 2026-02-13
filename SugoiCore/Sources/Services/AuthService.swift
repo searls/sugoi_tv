@@ -61,9 +61,20 @@ public actor AuthService {
       cid: response.cid,
       productConfigJSON: response.productConfig
     )
+    try await keychain.storePassword(password)
 
     self.session = newSession
     return newSession
+  }
+
+  // MARK: - Re-authentication with stored credentials
+
+  public func reauthenticateWithStoredCredentials() async throws -> Session {
+    guard let cid = try await keychain.cid(),
+          let password = try await keychain.password() else {
+      throw AuthError.noSession
+    }
+    return try await login(cid: cid, password: password)
   }
 
   // MARK: - Token refresh

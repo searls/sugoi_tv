@@ -64,6 +64,25 @@ public final class AppState {
     await authService.startAutoRefresh()
   }
 
+  /// Attempt silent re-login using stored credentials.
+  /// Returns the new session on success, or nil on auth failure (logout already called).
+  /// On transient network errors, returns nil but leaves session and password intact.
+  public func reauthenticate() async -> AuthService.Session? {
+    do {
+      let newSession = try await authService.reauthenticateWithStoredCredentials()
+      self.session = newSession
+      await authService.startAutoRefresh()
+      return newSession
+    } catch is AuthError {
+      // Definitive auth failure — credentials are bad, clear everything
+      await logout()
+      return nil
+    } catch {
+      // Transient network error — leave session and password intact
+      return nil
+    }
+  }
+
   /// Clear session and return to login
   public func logout() async {
     await authService.logout()

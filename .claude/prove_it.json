@@ -46,6 +46,7 @@
           "type": "agent",
           "promptType": "reference",
           "prompt": "review:test_coverage",
+          "model": "haiku",
           "when": {
             "variablesPresent": [
               "session_diff"

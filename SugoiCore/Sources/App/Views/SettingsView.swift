@@ -8,8 +8,22 @@ public struct SettingsView: View {
   }
 
   public var body: some View {
+    Group {
+      if appState.session != nil {
+        signedInView
+      } else {
+        signedOutView
+      }
+    }
+    .frame(minWidth: 350, minHeight: 200)
+  }
+
+  private var signedInView: some View {
     Form {
       Section("Account") {
+        if let session = appState.session {
+          LabeledContent("Customer ID", value: session.cid)
+        }
         Button("Sign Out", role: .destructive) {
           Task { await appState.logout() }
         }
@@ -17,6 +31,15 @@ public struct SettingsView: View {
       }
     }
     .formStyle(.grouped)
-    .frame(minWidth: 300, minHeight: 150)
+  }
+
+  private var signedOutView: some View {
+    LoginView(
+      viewModel: LoginViewModel(
+        loginAction: { cid, password in
+          try await appState.login(cid: cid, password: password)
+        }
+      )
+    )
   }
 }

@@ -52,6 +52,67 @@ struct AuthServiceTests {
     #expect(try await keychain.cid() == "AABC538835997")
   }
 
+  @Test("Login stores password in keychain")
+  func loginStoresPassword() async throws {
+    let mock = MockHTTPSession()
+    mock.requestHandler = { request in
+      let response = HTTPURLResponse(
+        url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil
+      )!
+      return (response, Data(Self.loginJSON.utf8))
+    }
+
+    let keychain = MockKeychainService()
+    let auth = AuthService(keychain: keychain, apiClient: APIClient(session: mock.session))
+
+    _ = try await auth.login(cid: "testuser", password: "mypassword")
+
+    #expect(try await keychain.password() == "mypassword")
+  }
+
+  @Test("Reauthenticate succeeds with stored credentials")
+  func reauthenticateSuccess() async throws {
+    let mock = MockHTTPSession()
+    mock.requestHandler = { request in
+      let response = HTTPURLResponse(
+        url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil
+      )!
+      return (response, Data(Self.loginJSON.utf8))
+    }
+
+    let keychain = MockKeychainService()
+    let auth = AuthService(keychain: keychain, apiClient: APIClient(session: mock.session))
+
+    // First login to populate keychain
+    _ = try await auth.login(cid: "testuser", password: "testpass")
+
+    // Clear the in-memory session to simulate expiry
+    await auth.logout()
+
+    // Re-populate keychain with cid and password (logout cleared them)
+    try await keychain.storeSession(
+      accessToken: "old", refreshToken: "old",
+      cid: "testuser", productConfigJSON: "{}"
+    )
+    try await keychain.storePassword("testpass")
+
+    let session = try await auth.reauthenticateWithStoredCredentials()
+    #expect(session.accessToken == "test_access_token+/==")
+  }
+
+  @Test("Reauthenticate throws when no stored credentials")
+  func reauthenticateNoCredentials() async throws {
+    let mock = MockHTTPSession()
+    let auth = AuthService(keychain: MockKeychainService(), apiClient: APIClient(session: mock.session))
+
+    do {
+      _ = try await auth.reauthenticateWithStoredCredentials()
+      #expect(Bool(false), "Should have thrown")
+    } catch let error as AuthError {
+      #expect(error == .noSession)
+    }
+  }
+
   @Test("Login with non-OK code throws loginFailed")
   func loginFailure() async {
     let mock = MockHTTPSession()
