@@ -1,7 +1,4 @@
 import SwiftUI
-import os.log
-
-private let log = Logger(subsystem: "co.searls.SugoiTV", category: "Playback")
 
 public struct SugoiTVRootView: View {
   var appState: AppState
@@ -134,10 +131,8 @@ final class ChannelPlaybackController {
     // reach the VMS server. Fall back to direct URL + AVURLAsset header
     // injection (works locally but not over AirPlay).
     if let proxiedURL = refererProxy.proxiedURL(for: url) {
-      log.info("Playing via proxy: \(proxiedURL.absoluteString)")
       playerManager.loadLiveStream(url: proxiedURL, referer: "")
     } else {
-      log.warning("Proxy not ready, falling back to direct URL")
       let referer = session.productConfig.vmsReferer
       playerManager.loadLiveStream(url: url, referer: referer)
     }

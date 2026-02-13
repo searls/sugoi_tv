@@ -1,8 +1,5 @@
 import Foundation
 import Network
-import os.log
-
-private let log = Logger(subsystem: "co.searls.SugoiTV", category: "RefererProxy")
 
 /// A local HTTP reverse proxy that injects the `Referer` header into upstream
 /// requests. This enables AirPlay external playback — the Apple TV fetches HLS
@@ -53,16 +50,12 @@ public final class RefererProxy {
           case .ready:
             self?.port = listener.port?.rawValue
             self?.isReady = true
-            let ip = Self.localIPAddress() ?? "unknown"
-            log.info("Proxy ready on \(ip):\(listener.port?.rawValue ?? 0)")
           case .failed(let error):
             self?.isReady = false
             self?.port = nil
-            log.error("Proxy failed: \(error)")
           case .cancelled:
             self?.isReady = false
             self?.port = nil
-            log.info("Proxy cancelled")
           default:
             break
           }
@@ -76,7 +69,7 @@ public final class RefererProxy {
       listener.start(queue: .global(qos: .userInitiated))
     } catch {
       isReady = false
-      log.error("Proxy failed to start: \(error)")
+
     }
   }
 
@@ -97,13 +90,8 @@ public final class RefererProxy {
   /// Wrap a real stream URL through the proxy.
   /// Returns `nil` if the proxy isn't ready or the URL can't be mapped.
   public func proxiedURL(for original: URL) -> URL? {
-    guard isReady, let port, let ip = localIP else {
-      log.warning("proxiedURL fallback: isReady=\(self.isReady), port=\(self.port.map(String.init) ?? "nil"), localIP=\(self.localIP ?? "nil")")
-      return nil
-    }
-    let result = Self.buildProxiedURL(original: original, proxyHost: ip, proxyPort: port)
-    log.info("proxiedURL: \(result?.absoluteString ?? "nil")")
-    return result
+    guard isReady, let port, let ip = localIP else { return nil }
+    return Self.buildProxiedURL(original: original, proxyHost: ip, proxyPort: port)
   }
 
   /// Pure function: build a proxied URL from components.
@@ -233,12 +221,10 @@ public final class RefererProxy {
   // MARK: - Connection handling
 
   private nonisolated func handleConnection(_ connection: NWConnection, referer: String) {
-    log.info("New connection from \(String(describing: connection.endpoint))")
     connection.start(queue: .global(qos: .userInitiated))
     // Read the HTTP request (up to 64KB should be plenty for an HLS request line + headers)
     connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] data, _, _, error in
       guard let self, let data, error == nil else {
-        log.error("Connection read error: \(error?.localizedDescription ?? "nil data")")
         connection.cancel()
         return
       }
@@ -279,12 +265,9 @@ public final class RefererProxy {
     }
 
     guard let targetURL = Self.targetURL(fromPath: path, query: query) else {
-      log.error("Cannot resolve target URL from path: \(path)")
       sendError(connection: connection, status: 400, message: "Cannot resolve target URL")
       return
     }
-
-    log.info("Proxying → \(targetURL.absoluteString)")
 
     // Fetch upstream with Referer header
     var request = URLRequest(url: targetURL)
@@ -313,7 +296,6 @@ public final class RefererProxy {
       }
 
       let statusCode = httpResponse.statusCode
-      log.info("Upstream response: \(statusCode) for \(targetURL.absoluteString)")
 
       // Handle redirects: rewrite Location and return the redirect to the client
       if (300...399).contains(statusCode), let location = httpResponse.value(forHTTPHeaderField: "Location") {
