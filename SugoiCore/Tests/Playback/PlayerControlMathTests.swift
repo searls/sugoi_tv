@@ -110,4 +110,49 @@ struct VolumeFractionTests {
   }
 }
 
+@Suite("ControlBarLayout")
+struct ControlBarLayoutTests {
+  @Test("live mode is compact — no scrubber, no time labels, no speed, no expansion")
+  func liveMode() {
+    let layout = ControlBarLayout(isLive: true, duration: 0)
+
+    #expect(layout.showsLiveBadge == true)
+    #expect(layout.showsScrubber == false)
+    #expect(layout.showsTimeLabels == false)
+    #expect(layout.showsSpeedControl == false)
+    #expect(layout.expandsToFillWidth == false)
+  }
+
+  @Test("live mode stays compact even with nonzero duration")
+  func liveModeWithDuration() {
+    let layout = ControlBarLayout(isLive: true, duration: 3600)
+
+    #expect(layout.showsLiveBadge == true)
+    #expect(layout.showsScrubber == false)
+    #expect(layout.expandsToFillWidth == false)
+  }
+
+  @Test("VOD with duration shows scrubber and expands")
+  func vodWithDuration() {
+    let layout = ControlBarLayout(isLive: false, duration: 120)
+
+    #expect(layout.showsLiveBadge == false)
+    #expect(layout.showsScrubber == true)
+    #expect(layout.showsTimeLabels == true)
+    #expect(layout.showsSpeedControl == true)
+    #expect(layout.expandsToFillWidth == true)
+  }
+
+  @Test("VOD with zero duration hides scrubber but still expands")
+  func vodZeroDuration() {
+    let layout = ControlBarLayout(isLive: false, duration: 0)
+
+    #expect(layout.showsLiveBadge == false)
+    #expect(layout.showsScrubber == false)
+    #expect(layout.showsTimeLabels == true)
+    #expect(layout.showsSpeedControl == true)
+    #expect(layout.expandsToFillWidth == true)
+  }
+}
+
 #endif

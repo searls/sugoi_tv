@@ -223,6 +223,10 @@ private struct PlayerControlsOverlay: View {
   @State private var isAirPlayPresenting = false
   @State private var playbackRate: Float = 1.0
 
+  private var layout: ControlBarLayout {
+    ControlBarLayout(isLive: playerManager.isLive, duration: playerManager.duration)
+  }
+
   var body: some View {
     ZStack(alignment: .bottom) {
       // Invisible hover region covering the full player area
@@ -267,62 +271,65 @@ private struct PlayerControlsOverlay: View {
       .buttonStyle(.borderless)
 
       // Time + scrubber (VOD) or LIVE badge
-      if playerManager.isLive {
+      if layout.showsLiveBadge {
         HStack(spacing: 4) {
           Circle().fill(.red).frame(width: 8, height: 8)
           Text("LIVE").font(.caption.bold())
         }
-        Spacer()
-      } else {
+      }
+
+      if layout.showsTimeLabels {
         Text(formatTime(currentDisplayTime))
           .font(.caption.monospacedDigit())
           .foregroundStyle(.secondary)
+      }
 
-        if playerManager.duration > 0 {
-          GeometryReader { geo in
-            let width = geo.size.width
-            let fraction = playerManager.duration > 0
-              ? CGFloat(currentDisplayTime / playerManager.duration)
-              : 0
-            ZStack(alignment: .leading) {
-              RoundedRectangle(cornerRadius: 2)
-                .fill(.tertiary)
-              RoundedRectangle(cornerRadius: 2)
-                .fill(.white)
-                .frame(width: width * min(max(fraction, 0), 1))
-            }
-            .frame(height: 4)
-            .frame(maxHeight: .infinity)
-            .contentShape(Rectangle())
-            .gesture(
-              DragGesture(minimumDistance: 0)
-                .onChanged { value in
-                  if !isScrubbing {
-                    isScrubbing = true
-                    scrubPosition = playerManager.currentTime
-                    cancelHide()
-                  }
-                  let pct = PlayerControlMath.scrubFraction(locationX: value.location.x, trackWidth: width)
-                  scrubPosition = PlayerControlMath.scrubPosition(fraction: pct, duration: playerManager.duration)
-                }
-                .onEnded { _ in
-                  playerManager.seek(to: scrubPosition)
-                  isScrubbing = false
-                  scheduleHide()
-                }
-            )
+      if layout.showsScrubber {
+        GeometryReader { geo in
+          let width = geo.size.width
+          let fraction = playerManager.duration > 0
+            ? CGFloat(currentDisplayTime / playerManager.duration)
+            : 0
+          ZStack(alignment: .leading) {
+            RoundedRectangle(cornerRadius: 2)
+              .fill(.tertiary)
+            RoundedRectangle(cornerRadius: 2)
+              .fill(.white)
+              .frame(width: width * min(max(fraction, 0), 1))
           }
-        } else {
-          Spacer()
+          .frame(height: 4)
+          .frame(maxHeight: .infinity)
+          .contentShape(Rectangle())
+          .gesture(
+            DragGesture(minimumDistance: 0)
+              .onChanged { value in
+                if !isScrubbing {
+                  isScrubbing = true
+                  scrubPosition = playerManager.currentTime
+                  cancelHide()
+                }
+                let pct = PlayerControlMath.scrubFraction(locationX: value.location.x, trackWidth: width)
+                scrubPosition = PlayerControlMath.scrubPosition(fraction: pct, duration: playerManager.duration)
+              }
+              .onEnded { _ in
+                playerManager.seek(to: scrubPosition)
+                isScrubbing = false
+                scheduleHide()
+              }
+          )
         }
+      } else if layout.expandsToFillWidth {
+        Spacer()
+      }
 
+      if layout.showsTimeLabels {
         Text(formatTime(playerManager.duration))
           .font(.caption.monospacedDigit())
           .foregroundStyle(.secondary)
       }
 
       // Playback speed (VOD only)
-      if !playerManager.isLive {
+      if layout.showsSpeedControl {
         Menu {
           ForEach([0.5, 1.0, 1.25, 1.5, 2.0] as [Float], id: \.self) { rate in
             Button {
@@ -492,6 +499,24 @@ enum PlayerControlMath {
     guard trackHeight > 0 else { return 0 }
     let fraction = 1.0 - (locationY / trackHeight)
     return Float(min(max(fraction, 0), 1))
+  }
+}
+
+/// Layout decisions for the player control bar.
+/// Live mode is compact (no scrubber, no expansion); VOD mode expands to show the scrubber.
+struct ControlBarLayout {
+  let showsLiveBadge: Bool
+  let showsScrubber: Bool
+  let showsTimeLabels: Bool
+  let showsSpeedControl: Bool
+  let expandsToFillWidth: Bool
+
+  init(isLive: Bool, duration: TimeInterval) {
+    showsLiveBadge = isLive
+    showsScrubber = !isLive && duration > 0
+    showsTimeLabels = !isLive
+    showsSpeedControl = !isLive
+    expandsToFillWidth = !isLive
   }
 }
 #endif
