@@ -50,9 +50,7 @@
           "model": "haiku",
           "ruleFile": ".claude/rules/testing.md",
           "when": {
-            "variablesPresent": [
-              "session_diff"
-            ]
+            "sourcesModifiedSinceLastRun": true
           }
         },
         {
@@ -94,5 +92,5 @@
       ]
     }
   ],
-  "initSeed": "291fdd02adc0"
+  "initSeed": "a032c010a440"
 }

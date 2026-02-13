@@ -267,6 +267,12 @@ private struct MacAuthenticatedContainer: View {
     } detail: {
       PlayerView(playerManager: controller.playerManager)
         .ignoresSafeArea()
+        .onTapGesture {
+          withAnimation {
+            columnVisibility = columnVisibility == .detailOnly
+              ? .doubleColumn : .detailOnly
+          }
+        }
     }
     .task { await controller.loadAndAutoSelect() }
     .onChange(of: controller.selectedChannel) { _, channel in
