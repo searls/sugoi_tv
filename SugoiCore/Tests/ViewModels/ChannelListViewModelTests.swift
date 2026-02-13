@@ -97,6 +97,82 @@ struct ChannelListViewModelTests {
     #expect(vm.filteredGroups.count == vm.channelGroups.count)
   }
 
+  @Test("Config exposes channelListHost for thumbnail URL construction")
+  @MainActor
+  func thumbnailURLFromConfig() async {
+    let mock = makeMock()
+    let service = ChannelService(apiClient: APIClient(session: mock.session))
+    let vm = ChannelListViewModel(channelService: service, config: Self.testConfig)
+
+    await vm.loadChannels()
+
+    let channel = vm.channelGroups[0].channels[0]
+    let url = StreamURLBuilder.thumbnailURL(
+      channelListHost: vm.config.channelListHost,
+      playpath: channel.playpath
+    )
+    #expect(url != nil)
+    let str = url!.absoluteString
+    #expect(str == "http://live.yoitv.com:9083/nhk.jpg?type=live&thumbnail=thumbnail_small.jpg")
+  }
+
+  @Test("Each channel produces a distinct thumbnail URL")
+  @MainActor
+  func distinctThumbnailURLsPerChannel() async {
+    let mock = makeMock()
+    let service = ChannelService(apiClient: APIClient(session: mock.session))
+    let vm = ChannelListViewModel(channelService: service, config: Self.testConfig)
+
+    await vm.loadChannels()
+
+    let allChannels = vm.channelGroups.flatMap(\.channels)
+    let urls = allChannels.compactMap {
+      StreamURLBuilder.thumbnailURL(
+        channelListHost: vm.config.channelListHost,
+        playpath: $0.playpath
+      )
+    }
+    #expect(urls.count == allChannels.count)
+    #expect(Set(urls).count == urls.count) // all unique
+  }
+
+  @Test("ChannelRow receives thumbnail URL matching its channel playpath")
+  @MainActor
+  func channelRowReceivesThumbnailURL() async {
+    let mock = makeMock()
+    let service = ChannelService(apiClient: APIClient(session: mock.session))
+    let vm = ChannelListViewModel(channelService: service, config: Self.testConfig)
+
+    await vm.loadChannels()
+
+    let channel = vm.channelGroups[0].channels[0]
+    let expectedURL = StreamURLBuilder.thumbnailURL(
+      channelListHost: vm.config.channelListHost,
+      playpath: channel.playpath
+    )
+    let row = ChannelRow(channel: channel, thumbnailURL: expectedURL)
+
+    #expect(row.thumbnailURL != nil)
+    #expect(row.thumbnailURL == expectedURL)
+    #expect(row.thumbnailURL!.absoluteString.contains(channel.playpath))
+    #expect(row.thumbnailURL!.absoluteString.contains("thumbnail_small.jpg"))
+  }
+
+  @Test("ChannelRow handles nil thumbnail URL")
+  @MainActor
+  func channelRowNilThumbnail() async {
+    let mock = makeMock()
+    let service = ChannelService(apiClient: APIClient(session: mock.session))
+    let vm = ChannelListViewModel(channelService: service, config: Self.testConfig)
+
+    await vm.loadChannels()
+
+    let channel = vm.channelGroups[0].channels[0]
+    let row = ChannelRow(channel: channel, thumbnailURL: nil)
+
+    #expect(row.thumbnailURL == nil)
+  }
+
   @Test("Load failure sets error message")
   @MainActor
   func loadFailure() async {

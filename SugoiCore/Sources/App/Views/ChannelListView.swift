@@ -9,7 +9,7 @@ public final class ChannelListViewModel {
   var searchText: String = ""
 
   private let channelService: ChannelService
-  private let config: ProductConfig
+  let config: ProductConfig
 
   public init(channelService: ChannelService, config: ProductConfig) {
     self.channelService = channelService
@@ -73,7 +73,13 @@ public struct ChannelListView: View {
       ForEach(viewModel.filteredGroups, id: \.category) { group in
         Section(group.category) {
           ForEach(group.channels, id: \.id) { channel in
-            ChannelRow(channel: channel)
+            ChannelRow(
+              channel: channel,
+              thumbnailURL: StreamURLBuilder.thumbnailURL(
+                channelListHost: viewModel.config.channelListHost,
+                playpath: channel.playpath
+              )
+            )
               .contentShape(Rectangle())
               .onTapGesture { onSelectChannel(channel) }
           }
@@ -86,22 +92,30 @@ public struct ChannelListView: View {
 
 struct ChannelRow: View {
   let channel: ChannelDTO
+  let thumbnailURL: URL?
 
   var body: some View {
     HStack(spacing: 12) {
-      // Thumbnail placeholder
-      RoundedRectangle(cornerRadius: 6)
-        .fill(.quaternary)
-        .frame(width: 60, height: 34)
-        .overlay {
-          if channel.running == 1 {
-            Circle()
-              .fill(.red)
-              .frame(width: 8, height: 8)
-              .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-              .padding(4)
-          }
+      AsyncImage(url: thumbnailURL) { phase in
+        switch phase {
+        case .success(let image):
+          image.resizable().scaledToFill()
+        default:
+          RoundedRectangle(cornerRadius: 6)
+            .fill(.quaternary)
         }
+      }
+      .frame(width: 60, height: 34)
+      .clipShape(RoundedRectangle(cornerRadius: 6))
+      .overlay {
+        if channel.running == 1 {
+          Circle()
+            .fill(.red)
+            .frame(width: 8, height: 8)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+            .padding(4)
+        }
+      }
 
       VStack(alignment: .leading, spacing: 2) {
         Text(channel.name)
@@ -120,4 +134,31 @@ struct ChannelRow: View {
     }
     .padding(.vertical, 2)
   }
+}
+
+// MARK: - Previews
+
+private let previewChannelJSON = Data("""
+{"id":"CH1","name":"NHK総合","description":"NHK General","tags":"$LIVE_CAT_関東","no":1,"playpath":"/query/s/abc","running":1}
+""".utf8)
+
+private let previewChannel = try! JSONDecoder().decode(ChannelDTO.self, from: previewChannelJSON)
+
+#Preview("ChannelRow — with thumbnail") {
+  ChannelRow(
+    channel: previewChannel,
+    thumbnailURL: StreamURLBuilder.thumbnailURL(
+      channelListHost: "http://live.yoitv.com:9083",
+      playpath: previewChannel.playpath
+    )
+  )
+  .padding()
+}
+
+#Preview("ChannelRow — nil thumbnail") {
+  ChannelRow(
+    channel: previewChannel,
+    thumbnailURL: nil
+  )
+  .padding()
 }

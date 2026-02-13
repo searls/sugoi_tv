@@ -315,7 +315,13 @@ private struct MacAuthenticatedContainer: View {
           ForEach(controller.channelListVM.filteredGroups, id: \.category) { group in
             Section(group.category) {
               ForEach(group.channels) { channel in
-                ChannelRow(channel: channel)
+                ChannelRow(
+                  channel: channel,
+                  thumbnailURL: StreamURLBuilder.thumbnailURL(
+                    channelListHost: controller.channelListVM.config.channelListHost,
+                    playpath: channel.playpath
+                  )
+                )
                   .tag(channel)
               }
             }
