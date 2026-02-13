@@ -121,3 +121,63 @@ struct ChannelPlaybackControllerAutoSelectTests {
     #expect(controller.selectedChannel?.id == "CH1")
   }
 }
+
+@Suite("ChannelPlaybackController.shouldCollapseSidebarOnTap")
+@MainActor
+struct ChannelPlaybackControllerSidebarCollapseTests {
+  nonisolated static var testLoginJSON: String {
+    ChannelPlaybackControllerAutoSelectTests.testLoginJSON
+  }
+
+  nonisolated static var channelsJSON: String {
+    ChannelPlaybackControllerAutoSelectTests.channelsJSON
+  }
+
+  private func makeController() throws -> ChannelPlaybackController {
+    let mock = MockHTTPSession()
+    mock.requestHandler = { _ in
+      let response = HTTPURLResponse(
+        url: URL(string: "http://test.com")!, statusCode: 200, httpVersion: nil, headerFields: nil
+      )!
+      return (response, Data(Self.channelsJSON.utf8))
+    }
+    let client = APIClient(session: mock.session)
+    let auth = AuthService(keychain: MockKeychainService(), apiClient: client)
+    let channels = ChannelService(apiClient: client)
+    let epg = EPGService(apiClient: client)
+    let appState = AppState(apiClient: client, authService: auth, channelService: channels, epgService: epg)
+
+    let loginResponse = try JSONDecoder().decode(LoginResponse.self, from: Data(Self.testLoginJSON.utf8))
+    let config = try loginResponse.parseProductConfig()
+    let session = AuthService.Session(from: loginResponse, config: config)
+
+    return ChannelPlaybackController(appState: appState, session: session)
+  }
+
+  @Test("Allows sidebar collapse when external playback is inactive")
+  func allowsCollapseByDefault() throws {
+    let controller = try makeController()
+
+    #expect(controller.playerManager.isExternalPlaybackActive == false)
+    #expect(controller.shouldCollapseSidebarOnTap == true)
+  }
+
+  @Test("Prevents sidebar collapse when AirPlay is active")
+  func preventsCollapseDuringAirPlay() throws {
+    let controller = try makeController()
+    // Simulate AirPlay becoming active (KVO would set this in production)
+    controller.playerManager.setExternalPlaybackActiveForTesting(true)
+
+    #expect(controller.shouldCollapseSidebarOnTap == false)
+  }
+
+  @Test("Re-allows sidebar collapse after AirPlay stops")
+  func reallowsCollapseAfterAirPlayStops() throws {
+    let controller = try makeController()
+    controller.playerManager.setExternalPlaybackActiveForTesting(true)
+    #expect(controller.shouldCollapseSidebarOnTap == false)
+
+    controller.playerManager.setExternalPlaybackActiveForTesting(false)
+    #expect(controller.shouldCollapseSidebarOnTap == true)
+  }
+}

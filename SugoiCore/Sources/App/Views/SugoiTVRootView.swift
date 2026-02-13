@@ -115,6 +115,12 @@ final class ChannelPlaybackController {
     }
   }
 
+  /// Whether tapping the player detail area should collapse the sidebar.
+  /// Returns false during AirPlay to avoid layout changes that interrupt external playback.
+  var shouldCollapseSidebarOnTap: Bool {
+    !playerManager.isExternalPlaybackActive
+  }
+
   func playChannel(_ channel: ChannelDTO) {
     hasAttemptedReauth = false
     lastChannelId = channel.id
@@ -268,9 +274,11 @@ private struct MacAuthenticatedContainer: View {
       PlayerView(playerManager: controller.playerManager)
         .ignoresSafeArea()
         .onTapGesture {
-          withAnimation {
-            columnVisibility = columnVisibility == .detailOnly
-              ? .doubleColumn : .detailOnly
+          guard controller.shouldCollapseSidebarOnTap else { return }
+          if columnVisibility != .detailOnly {
+            withAnimation {
+              columnVisibility = .detailOnly
+            }
           }
         }
     }

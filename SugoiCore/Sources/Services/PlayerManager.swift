@@ -21,6 +21,7 @@ public final class PlayerManager {
   public private(set) var currentTime: TimeInterval = 0
   public private(set) var duration: TimeInterval = 0
   public private(set) var isLive: Bool = false
+  public private(set) var isExternalPlaybackActive: Bool = false
 
   public var player: AVPlayer? { _player }
 
@@ -28,6 +29,7 @@ public final class PlayerManager {
   @ObservationIgnored nonisolated(unsafe) private var timeObserver: Any?
   private var statusObservation: NSKeyValueObservation?
   private var rateObservation: NSKeyValueObservation?
+  private var externalPlaybackObservation: NSKeyValueObservation?
   private var lastStreamInfo: (url: URL, referer: String, isLive: Bool, resumeFrom: TimeInterval)?
 
   public init() {}
@@ -167,6 +169,14 @@ public final class PlayerManager {
       }
     }
 
+    // External playback (AirPlay) tracking
+    externalPlaybackObservation = player.observe(\.isExternalPlaybackActive, options: [.new]) {
+      [weak self] player, _ in
+      Task { @MainActor in
+        self?.isExternalPlaybackActive = player.isExternalPlaybackActive
+      }
+    }
+
     // End of playback notification
     NotificationCenter.default.addObserver(
       forName: .AVPlayerItemDidPlayToEndTime,
@@ -208,6 +218,8 @@ public final class PlayerManager {
     statusObservation = nil
     rateObservation?.invalidate()
     rateObservation = nil
+    externalPlaybackObservation?.invalidate()
+    externalPlaybackObservation = nil
     NotificationCenter.default.removeObserver(self)
 
     _player?.pause()
@@ -217,6 +229,12 @@ public final class PlayerManager {
     currentTime = 0
     duration = 0
     isLive = false
+    isExternalPlaybackActive = false
+  }
+
+  /// Test-only: allows tests to simulate AirPlay state changes (via @testable import)
+  internal func setExternalPlaybackActiveForTesting(_ active: Bool) {
+    isExternalPlaybackActive = active
   }
 
   deinit {

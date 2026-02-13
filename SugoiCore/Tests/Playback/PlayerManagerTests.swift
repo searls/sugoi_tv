@@ -13,6 +13,7 @@ struct PlayerManagerTests {
     #expect(manager.currentTime == 0)
     #expect(manager.duration == 0)
     #expect(manager.isLive == false)
+    #expect(manager.isExternalPlaybackActive == false)
     #expect(manager.player == nil)
   }
 
@@ -57,6 +58,7 @@ struct PlayerManagerTests {
     #expect(manager.currentTime == 0)
     #expect(manager.duration == 0)
     #expect(manager.isLive == false)
+    #expect(manager.isExternalPlaybackActive == false)
   }
 
   @Test("Play and pause toggle state when player exists")
@@ -130,6 +132,7 @@ struct PlayerManagerTests {
     #expect(firstPlayer !== secondPlayer)
     #expect(manager.isLive == true)
     #expect(manager.state == .loading)
+    #expect(manager.isExternalPlaybackActive == false)
   }
 
   @Test("clearError resets failed state to idle")
