@@ -16,6 +16,12 @@ struct SugoiTVApp: App {
     .windowStyle(.hiddenTitleBar)
     .defaultSize(width: 960, height: 540)
     #endif
+
+    #if os(macOS)
+    Settings {
+      SettingsView(appState: appState)
+    }
+    #endif
   }
 }
 
@@ -28,6 +34,10 @@ private struct WindowAccessor: NSViewRepresentable {
     let view = NSView()
     DispatchQueue.main.async {
       if let window = view.window {
+        window.titlebarAppearsTransparent = true
+        window.titleVisibility = .hidden
+        window.styleMask.insert(.fullSizeContentView)
+
         // Snap the current frame to 16:9 (keep width, adjust height)
         var frame = window.frame
         let contentRect = window.contentRect(forFrameRect: frame)

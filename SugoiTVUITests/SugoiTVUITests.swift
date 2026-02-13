@@ -3,37 +3,70 @@ import XCTest
 final class SugoiTVUITests: XCTestCase {
 
   @MainActor
-  func testGuideButtonOpensChannelGuide() throws {
+  func testChannelListAppearsAfterLogin() throws {
     let (user, pass) = try credentials()
     let app = XCUIApplication()
     app.launch()
 
-    let guideButton = app.buttons["channelGuideButton"]
     let customerID = app.textFields["Customer ID"]
 
-    // App may restore a persisted session or show login.
-    // Poll for either state for up to 30s.
+    // Wait for the app to finish restoring session or show login
     var ready = false
     for i in 0..<30 {
-      if guideButton.exists || customerID.exists { ready = true; break }
+      if app.outlines.firstMatch.exists || customerID.exists { ready = true; break }
       if i == 5 {
-        print("Poll \(i): guideButton=\(guideButton.exists) customerID=\(customerID.exists)")
+        print("Poll \(i): outline=\(app.outlines.firstMatch.exists) customerID=\(customerID.exists)")
         print(app.debugDescription)
       }
       Thread.sleep(forTimeInterval: 1)
     }
-    XCTAssertTrue(ready, "App should show either guide button or login screen")
+    XCTAssertTrue(ready, "App should show either channel list or login screen")
 
-    if !guideButton.exists {
+    if customerID.exists {
       login(app: app, user: user, pass: pass)
-      XCTAssertTrue(guideButton.waitForExistence(timeout: 15), "Guide button should appear after login")
     }
 
-    guideButton.tap()
+    // On macOS the sidebar uses a native List which appears as an outline
+    let channelList = app.outlines.firstMatch
+    XCTAssertTrue(
+      channelList.waitForExistence(timeout: 15),
+      "Channel list sidebar should appear after login"
+    )
+  }
+
+  #if os(macOS)
+  @MainActor
+  func testSettingsContainsSignOut() throws {
+    let (user, pass) = try credentials()
+    let app = XCUIApplication()
+    app.launch()
+
+    let customerID = app.textFields["Customer ID"]
+
+    // Wait for the app to finish restoring session or show login
+    var ready = false
+    for _ in 0..<30 {
+      if app.outlines.firstMatch.exists || customerID.exists { ready = true; break }
+      Thread.sleep(forTimeInterval: 1)
+    }
+    XCTAssertTrue(ready, "App should show either channel list or login screen")
+
+    if customerID.exists {
+      login(app: app, user: user, pass: pass)
+      let channelList = app.outlines.firstMatch
+      XCTAssertTrue(channelList.waitForExistence(timeout: 15), "Should be logged in")
+    }
+
+    // Open Settings via Cmd+,
+    app.typeKey(",", modifierFlags: .command)
 
     let signOut = app.buttons["signOutButton"]
-    XCTAssertTrue(signOut.waitForExistence(timeout: 5), "Channel guide sidebar should open with Sign Out button")
+    XCTAssertTrue(
+      signOut.waitForExistence(timeout: 5),
+      "Settings window should contain Sign Out button"
+    )
   }
+  #endif
 
   // MARK: - Helpers
 

@@ -125,6 +125,33 @@ Never commit credentials to the repository. For development, use an
 `.xcconfig` file excluded from git, or pass via Xcode scheme environment
 variables.
 
+## Visual Verification (Prove It)
+
+**Any change that touches UI MUST be visually verified before the work is
+considered done.** "It compiles" and "tests pass" are necessary but not
+sufficient — you must see the pixels.
+
+**MANDATORY for every feature/plan that changes views:**
+
+1. **Build and run** the app via Xcode MCP
+2. **Take a screenshot** of each affected screen state
+3. **Read the screenshot** yourself and confirm the result matches intent
+4. **Document what you see** — call out anything unexpected, even if minor
+
+Do NOT delegate visual verification to a subagent and trust its prose summary.
+Read the screenshot image yourself.
+
+**When to verify:**
+- After implementing any View change (new views, layout changes, modifier changes)
+- After removing UI elements (confirm they're actually gone)
+- After platform-specific `#if os()` branching (verify each platform if possible)
+
+**What to look for:**
+- Layout: elements positioned correctly, no overlap, proper spacing
+- Chrome: traffic lights, toolbars, window controls present/absent as expected
+- Content: correct data displayed, no placeholder text leaking through
+- Interaction: sidebar toggles, navigation, selection highlighting
+
 ## Development Notes
 
 - Running this app will kick any concurrent session on play.yoitv.com (and vice
