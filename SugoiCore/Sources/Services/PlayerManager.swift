@@ -24,9 +24,8 @@ public final class PlayerManager {
 
   public var player: AVPlayer? { _player }
 
-  // nonisolated(unsafe) so deinit can clean up the time observer
-  nonisolated(unsafe) private var _player: AVPlayer?
-  nonisolated(unsafe) private var timeObserver: Any?
+  @ObservationIgnored nonisolated(unsafe) private var _player: AVPlayer?
+  @ObservationIgnored nonisolated(unsafe) private var timeObserver: Any?
   private var statusObservation: NSKeyValueObservation?
   private var rateObservation: NSKeyValueObservation?
   private var lastStreamInfo: (url: URL, referer: String, isLive: Bool, resumeFrom: TimeInterval)?
@@ -126,7 +125,9 @@ public final class PlayerManager {
     let interval = CMTime(seconds: 0.05, preferredTimescale: 600)
     timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) {
       [weak self] time in
-      self?.currentTime = time.seconds
+      MainActor.assumeIsolated {
+        self?.currentTime = time.seconds
+      }
     }
 
     // Player item status
@@ -172,7 +173,9 @@ public final class PlayerManager {
       object: player.currentItem,
       queue: .main
     ) { [weak self] _ in
-      self?.state = .ended
+      MainActor.assumeIsolated {
+        self?.state = .ended
+      }
     }
   }
 
