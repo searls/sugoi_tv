@@ -16,5 +16,7 @@
 	<array>
 		<string>$(AppIdentifierPrefix)co.searls.SugoiTV</string>
 	</array>
+	<key>com.apple.security.network.server</key>
+	<true/>
 </dict>
 </plist>

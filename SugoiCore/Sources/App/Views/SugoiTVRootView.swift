@@ -1,4 +1,7 @@
 import SwiftUI
+import os.log
+
+private let log = Logger(subsystem: "co.searls.SugoiTV", category: "Playback")
 
 public struct SugoiTVRootView: View {
   var appState: AppState
@@ -84,12 +87,19 @@ final class ChannelPlaybackController {
   /// Reset to false in playChannel(), set to true after attempting reauth.
   var hasAttemptedReauth = false
 
+  /// Local HTTP proxy that injects Referer headers for AirPlay compatibility.
+  /// When ready, stream URLs route through this proxy so the Apple TV can
+  /// reach the VMS server without needing custom HTTP headers.
+  let refererProxy: RefererProxy
+
   init(appState: AppState, session: AuthService.Session) {
     self.session = session
     self.channelListVM = ChannelListViewModel(
       channelService: appState.channelService,
       config: session.productConfig
     )
+    self.refererProxy = RefererProxy(referer: session.productConfig.vmsReferer)
+    refererProxy.start()
   }
 
   func loadAndAutoSelect() async {
@@ -114,8 +124,17 @@ final class ChannelPlaybackController {
       accessToken: session.accessToken
     ) else { return }
 
-    let referer = session.productConfig.vmsReferer
-    playerManager.loadLiveStream(url: url, referer: referer)
+    // When the proxy is ready, route through it so AirPlay receivers can
+    // reach the VMS server. Fall back to direct URL + AVURLAsset header
+    // injection (works locally but not over AirPlay).
+    if let proxiedURL = refererProxy.proxiedURL(for: url) {
+      log.info("Playing via proxy: \(proxiedURL.absoluteString)")
+      playerManager.loadLiveStream(url: proxiedURL, referer: "")
+    } else {
+      log.warning("Proxy not ready, falling back to direct URL")
+      let referer = session.productConfig.vmsReferer
+      playerManager.loadLiveStream(url: url, referer: referer)
+    }
     playerManager.setNowPlayingInfo(title: channel.name, isLiveStream: true)
   }
 }
