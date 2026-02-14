@@ -95,6 +95,36 @@ struct AppStateRestoreSessionTests {
     #expect(appState.isRestoringSession == false)
   }
 
+  @Test("isRestoringSession is already false when refresh network call fires")
+  func restoringFalseBeforeRefresh() async throws {
+    let keychain = try await populatedKeychain()
+    let stateCapture = StateCapture()
+    let mock = MockHTTPSession()
+
+    let appState = makeAppState(keychain: keychain, mock: mock)
+
+    mock.requestHandler = { request in
+      // The handler fires on a URLProtocol background thread while
+      // restoreSession() is suspended at the await. The main thread is free,
+      // so we can synchronously read @MainActor state.
+      DispatchQueue.main.sync {
+        MainActor.assumeIsolated {
+          stateCapture.set(appState.isRestoringSession)
+        }
+      }
+      let response = HTTPURLResponse(
+        url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil
+      )!
+      return (response, Data(Self.refreshedLoginJSON.utf8))
+    }
+
+    await appState.restoreSession()
+
+    // At the moment the refresh request fired, isRestoringSession was already false
+    #expect(stateCapture.value == false, "isRestoringSession should be false before refresh network call")
+    #expect(appState.session?.accessToken == "refreshed_token")
+  }
+
   // MARK: - Stored session + AUTH error (session expired)
 
   @Test("Stored session + AUTH error on refresh → session cleared")

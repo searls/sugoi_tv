@@ -39,10 +39,14 @@ public final class AppState {
     self.epgService = epgService
   }
 
-  /// Attempt to restore a previous session from the Keychain
+  /// Attempt to restore a previous session from the Keychain.
+  /// Unblocks the UI as soon as keychain restore completes (stale tokens are usable),
+  /// then refreshes tokens in the background.
   public func restoreSession() async {
     isRestoringSession = true
     session = try? await authService.restoreSession()
+    isRestoringSession = false
+
     if session != nil {
       do {
         session = try await authService.refreshTokens()
@@ -55,7 +59,6 @@ public final class AppState {
         await authService.startAutoRefresh()
       }
     }
-    isRestoringSession = false
   }
 
   /// Log in with credentials and update session

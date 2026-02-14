@@ -1,5 +1,25 @@
 import Foundation
 
+/// Thread-safe box for capturing a value from a mock request handler.
+public final class StateCapture: @unchecked Sendable {
+  private let lock = NSLock()
+  private var _value: Bool?
+
+  public init() {}
+
+  public func set(_ value: Bool) {
+    lock.lock()
+    _value = value
+    lock.unlock()
+  }
+
+  public var value: Bool? {
+    lock.lock()
+    defer { lock.unlock() }
+    return _value
+  }
+}
+
 /// Thread-safe call counter for use in mock request handlers.
 public final class CallCounter: @unchecked Sendable {
   private let lock = NSLock()

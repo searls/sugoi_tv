@@ -61,7 +61,7 @@ struct ChannelPlaybackControllerAutoSelectTests {
     """
   }
 
-  private func makeController(channelsJSON: String) throws -> ChannelPlaybackController {
+  private func makeController(channelsJSON: String, defaults: UserDefaults? = nil) throws -> ChannelPlaybackController {
     let mock = MockHTTPSession()
     mock.requestHandler = { _ in
       let response = HTTPURLResponse(
@@ -79,7 +79,8 @@ struct ChannelPlaybackControllerAutoSelectTests {
     let config = try loginResponse.parseProductConfig()
     let session = AuthService.Session(from: loginResponse, config: config)
 
-    return ChannelPlaybackController(appState: appState, session: session)
+    let isolatedDefaults = defaults ?? UserDefaults(suiteName: "test.autoselect.\(UUID().uuidString)")!
+    return ChannelPlaybackController(appState: appState, session: session, defaults: isolatedDefaults)
   }
 
   @Test("Selects last-used channel when lastChannelId matches")
@@ -123,6 +124,106 @@ struct ChannelPlaybackControllerAutoSelectTests {
   }
 }
 
+@Suite("ChannelPlaybackController.loadAndAutoSelect with cache")
+@MainActor
+struct ChannelPlaybackControllerCacheTests {
+  nonisolated static let channelsJSON = ChannelPlaybackControllerAutoSelectTests.channelsJSON
+  nonisolated static let testLoginJSON = ChannelPlaybackControllerAutoSelectTests.testLoginJSON
+
+  /// Channels that match channelsJSON, for pre-populating UserDefaults cache.
+  nonisolated static let cachedChannels: [ChannelDTO] = [
+    ChannelDTO(id: "CH1", uid: nil, name: "NHK総合", description: nil, tags: "$LIVE_CAT_関東", no: 1, timeshift: nil, timeshiftLen: nil, epgKeepDays: nil, state: nil, running: 1, playpath: "/nhk", liveType: nil),
+    ChannelDTO(id: "CH2", uid: nil, name: "テレビ朝日", description: nil, tags: "$LIVE_CAT_関東", no: 2, timeshift: nil, timeshiftLen: nil, epgKeepDays: nil, state: nil, running: nil, playpath: "/tvasahi", liveType: nil),
+    ChannelDTO(id: "CH3", uid: nil, name: "MBS毎日放送", description: nil, tags: "$LIVE_CAT_関西", no: 3, timeshift: nil, timeshiftLen: nil, epgKeepDays: nil, state: nil, running: nil, playpath: "/mbs", liveType: nil),
+  ]
+
+  /// Creates an isolated UserDefaults suite pre-seeded with cached channels.
+  private func seededDefaults() -> UserDefaults {
+    let defaults = UserDefaults(suiteName: "test.cache.\(UUID().uuidString)")!
+    let data = try! JSONEncoder().encode(Self.cachedChannels)
+    defaults.set(data, forKey: "cachedChannels")
+    return defaults
+  }
+
+  private func makeController(channelsJSON: String, defaults: UserDefaults) throws -> ChannelPlaybackController {
+    let mock = MockHTTPSession()
+    mock.requestHandler = { _ in
+      let response = HTTPURLResponse(
+        url: URL(string: "http://test.com")!, statusCode: 200, httpVersion: nil, headerFields: nil
+      )!
+      return (response, Data(channelsJSON.utf8))
+    }
+    let client = APIClient(session: mock.session)
+    let auth = AuthService(keychain: MockKeychainService(), apiClient: client)
+    let channels = ChannelService(apiClient: client)
+    let epg = EPGService(apiClient: client)
+    let appState = AppState(apiClient: client, authService: auth, channelService: channels, epgService: epg)
+
+    let loginResponse = try JSONDecoder().decode(LoginResponse.self, from: Data(Self.testLoginJSON.utf8))
+    let config = try loginResponse.parseProductConfig()
+    let session = AuthService.Session(from: loginResponse, config: config)
+
+    return ChannelPlaybackController(appState: appState, session: session, defaults: defaults)
+  }
+
+  @Test("Init loads cached channels into channelGroups")
+  func initLoadsCachedChannels() throws {
+    let defaults = seededDefaults()
+    let controller = try makeController(channelsJSON: Self.channelsJSON, defaults: defaults)
+
+    #expect(!controller.channelListVM.channelGroups.isEmpty)
+    #expect(controller.channelListVM.channelGroups[0].category == "関東")
+  }
+
+  @Test("Auto-selects last channel from cache before network fetch")
+  func autoSelectsFromCache() async throws {
+    let defaults = seededDefaults()
+    let controller = try makeController(channelsJSON: Self.channelsJSON, defaults: defaults)
+    controller.lastChannelId = "CH2"
+
+    await controller.loadAndAutoSelect()
+
+    #expect(controller.selectedChannel?.id == "CH2")
+  }
+
+  @Test("Auto-selects from cache even when network fails")
+  func autoSelectsFromCacheOnNetworkFailure() async throws {
+    let defaults = seededDefaults()
+
+    let mock = MockHTTPSession()
+    mock.requestHandler = { _ in throw URLError(.notConnectedToInternet) }
+    let client = APIClient(session: mock.session)
+    let auth = AuthService(keychain: MockKeychainService(), apiClient: client)
+    let channels = ChannelService(apiClient: client)
+    let epg = EPGService(apiClient: client)
+    let appState = AppState(apiClient: client, authService: auth, channelService: channels, epgService: epg)
+
+    let loginResponse = try JSONDecoder().decode(LoginResponse.self, from: Data(Self.testLoginJSON.utf8))
+    let config = try loginResponse.parseProductConfig()
+    let session = AuthService.Session(from: loginResponse, config: config)
+
+    let controller = ChannelPlaybackController(appState: appState, session: session, defaults: defaults)
+    controller.lastChannelId = "CH1"
+
+    await controller.loadAndAutoSelect()
+
+    // Channel selected from cache despite network failure
+    #expect(controller.selectedChannel?.id == "CH1")
+    #expect(!controller.channelListVM.channelGroups.isEmpty)
+  }
+
+  @Test("Empty cache does not select a channel before network fetch")
+  func emptyCacheNoSelection() throws {
+    let emptyDefaults = UserDefaults(suiteName: "test.cache.empty.\(UUID().uuidString)")!
+    let controller = try makeController(channelsJSON: Self.channelsJSON, defaults: emptyDefaults)
+    controller.lastChannelId = "CH1"
+
+    // Before loadAndAutoSelect, no selection from empty cache
+    #expect(controller.selectedChannel == nil)
+    #expect(controller.channelListVM.channelGroups.isEmpty)
+  }
+}
+
 @Suite("ChannelPlaybackController.shouldCollapseSidebarOnTap")
 @MainActor
 struct ChannelPlaybackControllerSidebarCollapseTests {
@@ -152,7 +253,8 @@ struct ChannelPlaybackControllerSidebarCollapseTests {
     let config = try loginResponse.parseProductConfig()
     let session = AuthService.Session(from: loginResponse, config: config)
 
-    return ChannelPlaybackController(appState: appState, session: session)
+    let defaults = UserDefaults(suiteName: "test.sidebar.\(UUID().uuidString)")!
+    return ChannelPlaybackController(appState: appState, session: session, defaults: defaults)
   }
 
   @Test("Allows sidebar collapse when external playback is inactive")
@@ -212,7 +314,8 @@ struct ChannelPlaybackControllerCompactColumnTests {
     let config = try loginResponse.parseProductConfig()
     let session = AuthService.Session(from: loginResponse, config: config)
 
-    return ChannelPlaybackController(appState: appState, session: session)
+    let defaults = UserDefaults(suiteName: "test.compact.\(UUID().uuidString)")!
+    return ChannelPlaybackController(appState: appState, session: session, defaults: defaults)
   }
 
   @Test("Starts on sidebar column for compact layouts")

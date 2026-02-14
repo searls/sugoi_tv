@@ -10,10 +10,27 @@ public final class ChannelListViewModel {
 
   private let channelService: ChannelService
   let config: ProductConfig
+  private let defaults: UserDefaults
+  private let cacheKey = "cachedChannels"
 
-  public init(channelService: ChannelService, config: ProductConfig) {
+  public init(channelService: ChannelService, config: ProductConfig, defaults: UserDefaults = .standard) {
     self.channelService = channelService
     self.config = config
+    self.defaults = defaults
+  }
+
+  /// Populate channelGroups from UserDefaults cache (synchronous, no network).
+  func loadCachedChannels() {
+    guard let data = defaults.data(forKey: cacheKey),
+          let channels = try? JSONDecoder().decode([ChannelDTO].self, from: data),
+          !channels.isEmpty else { return }
+    channelGroups = ChannelService.groupByCategory(channels)
+  }
+
+  /// Persist the current flat channel list to UserDefaults after a successful fetch.
+  private func cacheChannels(_ channels: [ChannelDTO]) {
+    guard let data = try? JSONEncoder().encode(channels) else { return }
+    defaults.set(data, forKey: cacheKey)
   }
 
   var filteredGroups: [(category: String, channels: [ChannelDTO])] {
@@ -34,6 +51,7 @@ public final class ChannelListViewModel {
     do {
       let channels = try await channelService.fetchChannels(config: config)
       channelGroups = ChannelService.groupByCategory(channels)
+      cacheChannels(channels)
     } catch {
       errorMessage = "Failed to load channels."
     }

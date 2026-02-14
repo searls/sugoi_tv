@@ -163,19 +163,40 @@ final class ChannelPlaybackController {
   /// reach the VMS server without needing custom HTTP headers.
   let refererProxy: RefererProxy
 
-  init(appState: AppState, session: AuthService.Session) {
+  init(appState: AppState, session: AuthService.Session, defaults: UserDefaults = .standard) {
     self.session = session
     self.channelListVM = ChannelListViewModel(
       channelService: appState.channelService,
-      config: session.productConfig
+      config: session.productConfig,
+      defaults: defaults
     )
     self.refererProxy = RefererProxy(referer: session.productConfig.vmsReferer)
     refererProxy.start()
+
+    // Populate sidebar from cache immediately (no network)
+    channelListVM.loadCachedChannels()
   }
 
   func loadAndAutoSelect() async {
+    // Auto-select from cache immediately if available
+    autoSelectChannel()
+
+    // Fetch fresh channels in background
     await channelListVM.loadChannels()
+
+    // Re-check selection: update if we had no selection, or if the cached
+    // channel disappeared from the fresh list
     let allChannels = channelListVM.channelGroups.flatMap(\.channels)
+    if selectedChannel == nil || !allChannels.contains(where: { $0.id == selectedChannel?.id }) {
+      autoSelectChannel()
+    }
+  }
+
+  /// Pick a channel from whatever is currently in channelGroups.
+  /// Prefers the last-played channel, then first live, then first overall.
+  private func autoSelectChannel() {
+    let allChannels = channelListVM.channelGroups.flatMap(\.channels)
+    guard !allChannels.isEmpty else { return }
     if !lastChannelId.isEmpty,
        let channel = allChannels.first(where: { $0.id == lastChannelId }) {
       selectedChannel = channel
@@ -298,6 +319,11 @@ private struct AuthenticatedContainer: View {
     .onChange(of: scenePhase) { _, newPhase in
       if newPhase == .background || newPhase == .inactive {
         lastActiveTimestamp = Date().timeIntervalSince1970
+      }
+    }
+    .onChange(of: appState.session?.accessToken) { _, _ in
+      if let newSession = appState.session {
+        controller.session = newSession
       }
     }
     .onChange(of: controller.selectedChannel) { _, channel in
