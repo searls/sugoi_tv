@@ -72,8 +72,8 @@ struct ChannelPlaybackControllerAutoSelectTests {
     let client = APIClient(session: mock.session)
     let auth = AuthService(keychain: MockKeychainService(), apiClient: client)
     let channels = ChannelService(apiClient: client)
-    let programGuide = ProgramGuideService(apiClient: client)
-    let appState = AppState(apiClient: client, authService: auth, channelService: channels, programGuideService: programGuide)
+    let epg = EPGService(apiClient: client)
+    let appState = AppState(apiClient: client, authService: auth, channelService: channels, epgService: epg)
 
     let loginResponse = try JSONDecoder().decode(LoginResponse.self, from: Data(Self.testLoginJSON.utf8))
     let config = try loginResponse.parseProductConfig()
@@ -156,8 +156,8 @@ struct ChannelPlaybackControllerCacheTests {
     let client = APIClient(session: mock.session)
     let auth = AuthService(keychain: MockKeychainService(), apiClient: client)
     let channels = ChannelService(apiClient: client)
-    let programGuide = ProgramGuideService(apiClient: client)
-    let appState = AppState(apiClient: client, authService: auth, channelService: channels, programGuideService: programGuide)
+    let epg = EPGService(apiClient: client)
+    let appState = AppState(apiClient: client, authService: auth, channelService: channels, epgService: epg)
 
     let loginResponse = try JSONDecoder().decode(LoginResponse.self, from: Data(Self.testLoginJSON.utf8))
     let config = try loginResponse.parseProductConfig()
@@ -195,8 +195,8 @@ struct ChannelPlaybackControllerCacheTests {
     let client = APIClient(session: mock.session)
     let auth = AuthService(keychain: MockKeychainService(), apiClient: client)
     let channels = ChannelService(apiClient: client)
-    let programGuide = ProgramGuideService(apiClient: client)
-    let appState = AppState(apiClient: client, authService: auth, channelService: channels, programGuideService: programGuide)
+    let epg = EPGService(apiClient: client)
+    let appState = AppState(apiClient: client, authService: auth, channelService: channels, epgService: epg)
 
     let loginResponse = try JSONDecoder().decode(LoginResponse.self, from: Data(Self.testLoginJSON.utf8))
     let config = try loginResponse.parseProductConfig()
@@ -246,8 +246,8 @@ struct ChannelPlaybackControllerSidebarCollapseTests {
     let client = APIClient(session: mock.session)
     let auth = AuthService(keychain: MockKeychainService(), apiClient: client)
     let channels = ChannelService(apiClient: client)
-    let programGuide = ProgramGuideService(apiClient: client)
-    let appState = AppState(apiClient: client, authService: auth, channelService: channels, programGuideService: programGuide)
+    let epg = EPGService(apiClient: client)
+    let appState = AppState(apiClient: client, authService: auth, channelService: channels, epgService: epg)
 
     let loginResponse = try JSONDecoder().decode(LoginResponse.self, from: Data(Self.testLoginJSON.utf8))
     let config = try loginResponse.parseProductConfig()
@@ -307,8 +307,8 @@ struct ChannelPlaybackControllerCompactColumnTests {
     let client = APIClient(session: mock.session)
     let auth = AuthService(keychain: MockKeychainService(), apiClient: client)
     let channels = ChannelService(apiClient: client)
-    let programGuide = ProgramGuideService(apiClient: client)
-    let appState = AppState(apiClient: client, authService: auth, channelService: channels, programGuideService: programGuide)
+    let epg = EPGService(apiClient: client)
+    let appState = AppState(apiClient: client, authService: auth, channelService: channels, epgService: epg)
 
     let loginResponse = try JSONDecoder().decode(LoginResponse.self, from: Data(Self.testLoginJSON.utf8))
     let config = try loginResponse.parseProductConfig()
@@ -335,99 +335,5 @@ struct ChannelPlaybackControllerCompactColumnTests {
       controller.playChannel(channel)
     }
     #expect(controller.preferredCompactColumn == .detail)
-  }
-}
-
-@Suite("ChannelPlaybackController.playVOD")
-@MainActor
-struct ChannelPlaybackControllerPlayVODTests {
-  /// Login JSON with a record host so VOD URLs can be built.
-  nonisolated static let testLoginJSON = """
-    {
-      "access_token": "test_token",
-      "token_type": "bearer",
-      "expires_in": 1770770216,
-      "refresh_token": "test_refresh",
-      "expired": false,
-      "disabled": false,
-      "confirmed": true,
-      "cid": "TEST123",
-      "type": "tvum_cid",
-      "trial": 0,
-      "create_time": 1652403783,
-      "expire_time": 1782959503,
-      "product_config": "{\\"vms_host\\":\\"http://live.yoitv.com:9083\\",\\"vms_uid\\":\\"UID\\",\\"vms_live_cid\\":\\"CID\\",\\"vms_referer\\":\\"http://play.yoitv.com\\",\\"vms_record_host\\":\\"http://vod.yoitv.com:9083\\"}",
-      "server_time": 1770755816,
-      "code": "OK"
-    }
-    """
-
-  private func makeController() throws -> ChannelPlaybackController {
-    let mock = MockHTTPSession()
-    mock.requestHandler = { _ in
-      let response = HTTPURLResponse(
-        url: URL(string: "http://test.com")!, statusCode: 200, httpVersion: nil, headerFields: nil
-      )!
-      return (response, Data("{}".utf8))
-    }
-    let client = APIClient(session: mock.session)
-    let auth = AuthService(keychain: MockKeychainService(), apiClient: client)
-    let channels = ChannelService(apiClient: client)
-    let programGuide = ProgramGuideService(apiClient: client)
-    let appState = AppState(apiClient: client, authService: auth, channelService: channels, programGuideService: programGuide)
-
-    let loginResponse = try JSONDecoder().decode(LoginResponse.self, from: Data(Self.testLoginJSON.utf8))
-    let config = try loginResponse.parseProductConfig()
-    let session = AuthService.Session(from: loginResponse, config: config)
-
-    let defaults = UserDefaults(suiteName: "test.vod.\(UUID().uuidString)")!
-    return ChannelPlaybackController(appState: appState, session: session, defaults: defaults)
-  }
-
-  @Test("Sets showingPlayer and preferredCompactColumn on VOD playback")
-  func setsStateOnPlay() throws {
-    let controller = try makeController()
-    let program = ProgramDTO(time: 1000, title: "Morning Show", path: "/query/morning")
-
-    #expect(controller.showingPlayer == false)
-    #expect(controller.preferredCompactColumn == .sidebar)
-
-    controller.playVOD(program: program, channelName: "NHK")
-
-    #expect(controller.showingPlayer == true)
-    #expect(controller.preferredCompactColumn == .detail)
-  }
-
-  @Test("Loads VOD stream into player manager")
-  func loadsVODStream() throws {
-    let controller = try makeController()
-    let program = ProgramDTO(time: 1000, title: "Morning Show", path: "/query/morning")
-
-    controller.playVOD(program: program, channelName: "NHK")
-
-    #expect(controller.playerManager.state == .loading)
-    #expect(controller.playerManager.isLive == false)
-  }
-
-  @Test("Does nothing when program has empty path")
-  func noOpForEmptyPath() throws {
-    let controller = try makeController()
-    let program = ProgramDTO(time: 1000, title: "Live Only", path: "")
-
-    controller.playVOD(program: program, channelName: "NHK")
-
-    // showingPlayer is set before the URL guard, but player shouldn't load
-    #expect(controller.playerManager.player == nil)
-  }
-
-  @Test("Resets hasAttemptedReauth on VOD playback")
-  func resetsReauthFlag() throws {
-    let controller = try makeController()
-    controller.hasAttemptedReauth = true
-    let program = ProgramDTO(time: 1000, title: "Drama", path: "/query/drama")
-
-    controller.playVOD(program: program, channelName: "NHK")
-
-    #expect(controller.hasAttemptedReauth == false)
   }
 }

@@ -9,7 +9,7 @@ public final class AppState {
   public let apiClient: APIClient
   public let authService: AuthService
   public let channelService: ChannelService
-  public let programGuideService: ProgramGuideService
+  public let epgService: EPGService
 
   public var session: AuthService.Session?
   public var isRestoringSession: Bool = true
@@ -21,7 +21,7 @@ public final class AppState {
     self.apiClient = apiClient
     self.authService = AuthService(keychain: keychain, apiClient: apiClient)
     self.channelService = ChannelService(apiClient: apiClient)
-    self.programGuideService = ProgramGuideService(apiClient: apiClient)
+    self.epgService = EPGService(apiClient: apiClient)
   }
 
   /// Testable initializer that accepts pre-built services
@@ -30,13 +30,13 @@ public final class AppState {
     apiClient: APIClient,
     authService: AuthService,
     channelService: ChannelService,
-    programGuideService: ProgramGuideService
+    epgService: EPGService
   ) {
     self.keychain = keychain
     self.apiClient = apiClient
     self.authService = authService
     self.channelService = channelService
-    self.programGuideService = programGuideService
+    self.epgService = epgService
   }
 
   /// Attempt to restore a previous session from the Keychain.

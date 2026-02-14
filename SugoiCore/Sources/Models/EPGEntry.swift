@@ -2,8 +2,8 @@ import Foundation
 import SwiftData
 
 @Model
-public final class Program {
-  #Index<Program>([\.startTime])
+public final class EPGEntry {
+  #Index<EPGEntry>([\.startTime])
 
   public var channelID: String = ""
   public var title: String = ""
@@ -12,7 +12,7 @@ public final class Program {
 
   public init() {}
 
-  public init(from dto: ProgramDTO, channelID: String) {
+  public init(from dto: EPGEntryDTO, channelID: String) {
     self.channelID = channelID
     self.title = dto.title
     self.path = dto.path
@@ -24,12 +24,12 @@ public final class Program {
 
   /// Format the start time for display in JST (Asia/Tokyo)
   public var formattedStartTime: String {
-    Program.jstFormatter.string(from: startTime)
+    EPGEntry.jstFormatter.string(from: startTime)
   }
 
   /// Format as short time only (e.g. "14:30")
   public var formattedTime: String {
-    Program.jstTimeFormatter.string(from: startTime)
+    EPGEntry.jstTimeFormatter.string(from: startTime)
   }
 
   private static let jstFormatter: DateFormatter = {

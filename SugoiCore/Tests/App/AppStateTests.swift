@@ -37,12 +37,12 @@ struct AppStateRestoreSessionTests {
     let client = APIClient(session: mock.session)
     let auth = AuthService(keychain: keychain, apiClient: client)
     let channels = ChannelService(apiClient: client)
-    let programGuide = ProgramGuideService(apiClient: client)
+    let epg = EPGService(apiClient: client)
     return AppState(
       apiClient: client,
       authService: auth,
       channelService: channels,
-      programGuideService: programGuide
+      epgService: epg
     )
   }
 
@@ -194,12 +194,12 @@ struct AppStateReauthenticateTests {
     let client = APIClient(session: mock.session)
     let auth = AuthService(keychain: keychain, apiClient: client)
     let channels = ChannelService(apiClient: client)
-    let programGuide = ProgramGuideService(apiClient: client)
+    let epg = EPGService(apiClient: client)
     return AppState(
       apiClient: client,
       authService: auth,
       channelService: channels,
-      programGuideService: programGuide
+      epgService: epg
     )
   }
 

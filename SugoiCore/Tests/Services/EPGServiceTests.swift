@@ -3,9 +3,9 @@ import Testing
 
 @testable import SugoiCore
 
-@Suite("ProgramGuideService")
-struct ProgramGuideServiceTests {
-  static let programJSON = """
+@Suite("EPGService")
+struct EPGServiceTests {
+  static let epgJSON = """
     {
       "result": [{
         "id": "CH1",
@@ -16,14 +16,14 @@ struct ProgramGuideServiceTests {
     }
     """
 
-  @Test("Fetches and parses program entries")
-  func fetchPrograms() async throws {
+  @Test("Fetches and parses EPG entries")
+  func fetchEPG() async throws {
     let mock = MockHTTPSession()
     mock.requestHandler = { _ in
       let response = HTTPURLResponse(
         url: URL(string: "http://test.com")!, statusCode: 200, httpVersion: nil, headerFields: nil
       )!
-      return (response, Data(Self.programJSON.utf8))
+      return (response, Data(Self.epgJSON.utf8))
     }
 
     let config = ProductConfig(
@@ -33,8 +33,8 @@ struct ProgramGuideServiceTests {
       vmsChannelListHost: nil, vmsLiveHost: nil, vmsRecordHost: nil, vmsLiveUid: nil
     )
 
-    let service = ProgramGuideService(apiClient: APIClient(session: mock.session))
-    let entries = try await service.fetchPrograms(config: config, channelID: "CH1")
+    let service = EPGService(apiClient: APIClient(session: mock.session))
+    let entries = try await service.fetchEPG(config: config, channelID: "CH1")
 
     #expect(entries.count == 3)
     #expect(entries[0].title == "Past Show")
@@ -45,31 +45,31 @@ struct ProgramGuideServiceTests {
   @Test("Finds current program by timestamp")
   func currentProgram() {
     let entries = [
-      ProgramDTO(time: 1000, title: "Show A", path: "/a"),
-      ProgramDTO(time: 2000, title: "Show B", path: ""),
-      ProgramDTO(time: 3000, title: "Show C", path: ""),
+      EPGEntryDTO(time: 1000, title: "Show A", path: "/a"),
+      EPGEntryDTO(time: 2000, title: "Show B", path: ""),
+      EPGEntryDTO(time: 3000, title: "Show C", path: ""),
     ]
 
-    let current = ProgramGuideService.currentProgram(in: entries, at: Date(timeIntervalSince1970: 2500))
+    let current = EPGService.currentProgram(in: entries, at: Date(timeIntervalSince1970: 2500))
     #expect(current?.title == "Show B")
 
-    let first = ProgramGuideService.currentProgram(in: entries, at: Date(timeIntervalSince1970: 1500))
+    let first = EPGService.currentProgram(in: entries, at: Date(timeIntervalSince1970: 1500))
     #expect(first?.title == "Show A")
 
-    let before = ProgramGuideService.currentProgram(in: entries, at: Date(timeIntervalSince1970: 500))
+    let before = EPGService.currentProgram(in: entries, at: Date(timeIntervalSince1970: 500))
     #expect(before == nil)
   }
 
   @Test("Finds upcoming programs")
   func upcomingPrograms() {
     let entries = [
-      ProgramDTO(time: 1000, title: "Past", path: ""),
-      ProgramDTO(time: 2000, title: "Now", path: ""),
-      ProgramDTO(time: 3000, title: "Soon", path: ""),
-      ProgramDTO(time: 4000, title: "Later", path: ""),
+      EPGEntryDTO(time: 1000, title: "Past", path: ""),
+      EPGEntryDTO(time: 2000, title: "Now", path: ""),
+      EPGEntryDTO(time: 3000, title: "Soon", path: ""),
+      EPGEntryDTO(time: 4000, title: "Later", path: ""),
     ]
 
-    let upcoming = ProgramGuideService.upcomingPrograms(
+    let upcoming = EPGService.upcomingPrograms(
       in: entries, after: Date(timeIntervalSince1970: 2500), limit: 2
     )
     #expect(upcoming.count == 2)
@@ -80,12 +80,12 @@ struct ProgramGuideServiceTests {
   @Test("Finds VOD-available past programs")
   func vodAvailable() {
     let entries = [
-      ProgramDTO(time: 1000, title: "With VOD", path: "/vod"),
-      ProgramDTO(time: 2000, title: "No VOD", path: ""),
-      ProgramDTO(time: 9999999999, title: "Future", path: "/future"),
+      EPGEntryDTO(time: 1000, title: "With VOD", path: "/vod"),
+      EPGEntryDTO(time: 2000, title: "No VOD", path: ""),
+      EPGEntryDTO(time: 9999999999, title: "Future", path: "/future"),
     ]
 
-    let vod = ProgramGuideService.vodAvailable(in: entries, before: Date(timeIntervalSince1970: 5000))
+    let vod = EPGService.vodAvailable(in: entries, before: Date(timeIntervalSince1970: 5000))
     #expect(vod.count == 1)
     #expect(vod[0].title == "With VOD")
   }

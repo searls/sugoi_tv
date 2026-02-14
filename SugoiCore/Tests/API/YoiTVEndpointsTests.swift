@@ -48,8 +48,8 @@ struct YoiTVEndpointsTests {
     #expect(str.contains("page_size=200"))
   }
 
-  @Test("Program guide URL includes channel ID and no_epg=0")
-  func programGuideURL() {
+  @Test("EPG URL includes channel ID and no_epg=0")
+  func epgURL() {
     let config = ProductConfig(
       vmsHost: "http://live.yoitv.com:9083",
       vmsVodHost: nil, vmsUid: "UID1", vmsLiveCid: "CID1",

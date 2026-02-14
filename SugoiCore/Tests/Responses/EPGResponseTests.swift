@@ -3,9 +3,9 @@ import Testing
 
 @testable import SugoiCore
 
-@Suite("ProgramResponse")
-struct ProgramResponseTests {
-  static let programJSON = """
+@Suite("EPGResponse")
+struct EPGResponseTests {
+  static let epgJSON = """
     {
       "result": [{
         "id": "AA6EC2B2BC19EFE5FA44BE23187CDA63",
@@ -16,21 +16,21 @@ struct ProgramResponseTests {
     }
     """
 
-  @Test("Decodes channel programs response")
+  @Test("Decodes EPG channel response")
   func decodesResponse() throws {
-    let data = Self.programJSON.data(using: .utf8)!
-    let response = try JSONDecoder().decode(ChannelProgramsResponse.self, from: data)
+    let data = Self.epgJSON.data(using: .utf8)!
+    let response = try JSONDecoder().decode(EPGChannelResponse.self, from: data)
 
     #expect(response.code == "OK")
     #expect(response.result.count == 1)
     #expect(response.result[0].id == "AA6EC2B2BC19EFE5FA44BE23187CDA63")
   }
 
-  @Test("Parses double-encoded program entries")
-  func parsesPrograms() throws {
-    let data = Self.programJSON.data(using: .utf8)!
-    let response = try JSONDecoder().decode(ChannelProgramsResponse.self, from: data)
-    let entries = try response.result[0].parsePrograms()
+  @Test("Parses double-encoded EPG entries")
+  func parsesEPGEntries() throws {
+    let data = Self.epgJSON.data(using: .utf8)!
+    let response = try JSONDecoder().decode(EPGChannelResponse.self, from: data)
+    let entries = try response.result[0].parseEPGEntries()
 
     #expect(entries.count == 2)
 
@@ -46,16 +46,16 @@ struct ProgramResponseTests {
   }
 
   @Test("Returns empty array when record_epg is nil")
-  func nilProgramHistory() throws {
-    let dto = ChannelProgramsDTO(id: "X", name: "Test", programHistory: nil)
-    let entries = try dto.parsePrograms()
+  func nilRecordEpg() throws {
+    let dto = EPGChannelDTO(id: "X", name: "Test", recordEpg: nil)
+    let entries = try dto.parseEPGEntries()
     #expect(entries.isEmpty)
   }
 
   @Test("Returns empty array when record_epg is empty string")
-  func emptyProgramHistory() throws {
-    let dto = ChannelProgramsDTO(id: "X", name: "Test", programHistory: "")
-    let entries = try dto.parsePrograms()
+  func emptyRecordEpg() throws {
+    let dto = EPGChannelDTO(id: "X", name: "Test", recordEpg: "")
+    let entries = try dto.parseEPGEntries()
     #expect(entries.isEmpty)
   }
 }
