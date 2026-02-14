@@ -124,7 +124,7 @@ public enum YoiTVEndpoints {
     return components.url!
   }
 
-  /// EPG for a specific channel: `GET {channelListHost}/api?action=listLives&vid={channelId}&no_epg=0&...`
+  /// Program guide for a specific channel: `GET {channelListHost}/api?action=listLives&vid={channelId}&no_epg=0&...`
   public static func epgURL(config: ProductConfig, channelID: String) -> URL {
     var components = URLComponents(string: "\(config.channelListHost)/api")!
     components.queryItems = [

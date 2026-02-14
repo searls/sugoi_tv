@@ -106,7 +106,7 @@ private struct ContainerPreview: View {
       apiClient: APIClient(),
       authService: AuthService(keychain: keychain, apiClient: mock),
       channelService: ChannelService(apiClient: mock),
-      epgService: EPGService(apiClient: mock)
+      programGuideService: ProgramGuideService(apiClient: mock)
     ))
   }
 
@@ -158,13 +158,19 @@ final class ChannelPlaybackController {
   /// Starts at `.sidebar` so the channel list appears first; switches to `.detail` on play.
   var preferredCompactColumn: NavigationSplitViewColumn = .sidebar
 
+  /// Whether the player is being shown (pushed onto the NavigationStack in the detail pane).
+  var showingPlayer = false
+
   /// Local HTTP proxy that injects Referer headers for AirPlay compatibility.
   /// When ready, stream URLs route through this proxy so the Apple TV can
   /// reach the VMS server without needing custom HTTP headers.
   let refererProxy: RefererProxy
 
+  private let programGuideService: ProgramGuideService
+
   init(appState: AppState, session: AuthService.Session, defaults: UserDefaults = .standard) {
     self.session = session
+    self.programGuideService = appState.programGuideService
     self.channelListVM = ChannelListViewModel(
       channelService: appState.channelService,
       config: session.productConfig,
@@ -213,10 +219,21 @@ final class ChannelPlaybackController {
     !playerManager.isExternalPlaybackActive
   }
 
+  /// Create a ProgramListViewModel for the currently selected channel.
+  func makeProgramListViewModel(for channel: ChannelDTO) -> ProgramListViewModel {
+    ProgramListViewModel(
+      programGuideService: programGuideService,
+      config: session.productConfig,
+      channelID: channel.id,
+      channelName: channel.name
+    )
+  }
+
   func playChannel(_ channel: ChannelDTO) {
     hasAttemptedReauth = false
     lastChannelId = channel.id
     preferredCompactColumn = .detail
+    showingPlayer = true
     guard let url = StreamURLBuilder.liveStreamURL(
       liveHost: session.productConfig.liveHost,
       playpath: channel.playpath,
@@ -233,6 +250,25 @@ final class ChannelPlaybackController {
       playerManager.loadLiveStream(url: url, referer: referer)
     }
     playerManager.setNowPlayingInfo(title: channel.name, isLiveStream: true)
+  }
+
+  func playVOD(program: ProgramDTO, channelName: String) {
+    hasAttemptedReauth = false
+    preferredCompactColumn = .detail
+    showingPlayer = true
+    guard let url = StreamURLBuilder.vodStreamURL(
+      recordHost: session.productConfig.recordHost,
+      path: program.path,
+      accessToken: session.accessToken
+    ) else { return }
+
+    if let proxiedURL = refererProxy.proxiedURL(for: url) {
+      playerManager.loadVODStream(url: proxiedURL, referer: "")
+    } else {
+      let referer = session.productConfig.vmsReferer
+      playerManager.loadVODStream(url: url, referer: referer)
+    }
+    playerManager.setNowPlayingInfo(title: "\(channelName) - \(program.title)", isLiveStream: false)
   }
 }
 
@@ -258,7 +294,7 @@ public enum SidebarPersistence {
 
 // MARK: - Unified authenticated container
 
-/// NavigationSplitView layout for all platforms: sidebar with channel list, detail with player.
+/// NavigationSplitView layout for all platforms: sidebar with channel list, detail with program list + player.
 /// On Mac and iPad, shows sidebar + detail side-by-side. On iPhone, collapses to push/pop stack.
 private struct AuthenticatedContainer: View {
   let appState: AppState
@@ -283,25 +319,7 @@ private struct AuthenticatedContainer: View {
       sidebarContent
         .navigationSplitViewColumnWidth(min: 220, ideal: 280, max: 360)
     } detail: {
-      ZStack(alignment: .topLeading) {
-        PlayerView(playerManager: controller.playerManager)
-        #if os(macOS)
-        if columnVisibility == .detailOnly {
-          trafficLightGlassBacking
-        }
-        #endif
-      }
-      .ignoresSafeArea()
-      #if os(macOS)
-      .onTapGesture {
-        guard controller.shouldCollapseSidebarOnTap else { return }
-        if columnVisibility != .detailOnly {
-          withAnimation {
-            columnVisibility = .detailOnly
-          }
-        }
-      }
-      #endif
+      detailContent
     }
     .task { await controller.loadAndAutoSelect() }
     .onAppear {
@@ -326,9 +344,6 @@ private struct AuthenticatedContainer: View {
         controller.session = newSession
       }
     }
-    .onChange(of: controller.selectedChannel) { _, channel in
-      if let channel { controller.playChannel(channel) }
-    }
     .onChange(of: controller.playerManager.state) { _, newState in
       if case .failed(let message) = newState,
          message.looksLikePermissionError,
@@ -349,6 +364,47 @@ private struct AuthenticatedContainer: View {
           }
           #endif
         }
+      }
+    }
+  }
+
+  @ViewBuilder
+  private var detailContent: some View {
+    NavigationStack {
+      if let channel = controller.selectedChannel {
+        ProgramListView(
+          viewModel: controller.makeProgramListViewModel(for: channel),
+          onPlayLive: {
+            controller.playChannel(channel)
+          },
+          onPlayVOD: { program in
+            controller.playVOD(program: program, channelName: channel.name)
+          }
+        )
+        .id(channel.id)
+        .navigationDestination(isPresented: $controller.showingPlayer) {
+          ZStack(alignment: .topLeading) {
+            PlayerView(playerManager: controller.playerManager)
+            #if os(macOS)
+            if columnVisibility == .detailOnly {
+              trafficLightGlassBacking
+            }
+            #endif
+          }
+          .ignoresSafeArea()
+          #if os(macOS)
+          .onTapGesture {
+            guard controller.shouldCollapseSidebarOnTap else { return }
+            if columnVisibility != .detailOnly {
+              withAnimation {
+                columnVisibility = .detailOnly
+              }
+            }
+          }
+          #endif
+        }
+      } else {
+        ContentUnavailableView("Select a Channel", systemImage: "tv")
       }
     }
   }
