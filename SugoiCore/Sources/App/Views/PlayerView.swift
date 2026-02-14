@@ -198,6 +198,7 @@ private struct MacOSPlayerView: View {
         pipController: pipController
       )
     }
+    .focusable()
     .onKeyPress(.space) {
       playerManager.togglePlayPause()
       return .handled
