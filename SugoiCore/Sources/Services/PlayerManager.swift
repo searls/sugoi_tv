@@ -30,6 +30,7 @@ public final class PlayerManager {
   private var statusObservation: NSKeyValueObservation?
   private var rateObservation: NSKeyValueObservation?
   private var externalPlaybackObservation: NSKeyValueObservation?
+  private var endOfPlaybackObserver: (any NSObjectProtocol)?
   private var lastStreamInfo: (url: URL, referer: String, isLive: Bool, resumeFrom: TimeInterval)?
 
   public init() {}
@@ -68,7 +69,9 @@ public final class PlayerManager {
     // When AirPlay is active and we already have a player, swap the item
     // instead of tearing down the player. Creating a new AVPlayer severs the
     // AirPlay route; replaceCurrentItem(with:) preserves it.
+    // Pause first so the AirPlay XPC layer isn't mid-stream during the swap.
     if let existing = _player, isExternalPlaybackActive {
+      existing.pause()
       cleanupObservations()
       self.isLive = isLive
       state = .loading
@@ -201,8 +204,8 @@ public final class PlayerManager {
       }
     }
 
-    // End of playback notification
-    NotificationCenter.default.addObserver(
+    // End of playback notification (store token for proper removal)
+    endOfPlaybackObserver = NotificationCenter.default.addObserver(
       forName: .AVPlayerItemDidPlayToEndTime,
       object: player.currentItem,
       queue: .main
@@ -245,7 +248,10 @@ public final class PlayerManager {
     rateObservation = nil
     externalPlaybackObservation?.invalidate()
     externalPlaybackObservation = nil
-    NotificationCenter.default.removeObserver(self)
+    if let observer = endOfPlaybackObserver {
+      NotificationCenter.default.removeObserver(observer)
+      endOfPlaybackObserver = nil
+    }
     currentTime = 0
     duration = 0
   }
