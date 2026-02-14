@@ -24,15 +24,25 @@ on its last line of output. Capture this for use with the tools below.
 
 ### Screenshots
 
-```bash
-# Full screen
-screencapture -x /tmp/screenshot.png
+Capture a specific app window (not the whole screen) using its Quartz window ID:
 
-# Specific window (by window ID)
-screencapture -x -l$(osascript -e 'tell app "SugoiTV" to id of window 1') /tmp/screenshot.png
+```bash
+# Get the window ID for SugoiTV
+WID=$(python3 -c "
+import Quartz
+for w in Quartz.CGWindowListCopyWindowInfo(Quartz.kCGWindowListOptionOnScreenOnly, Quartz.kCGNullWindowID):
+    if w.get('kCGWindowOwnerName') == 'SugoiTV':
+        print(w['kCGWindowNumber']); break
+")
+
+# Capture just that window
+screencapture -x -l "$WID" /tmp/screenshot.png
 ```
 
 Then read `/tmp/screenshot.png` to visually verify.
+
+> **Requires**: `pyobjc-framework-Quartz` (`pip3 install pyobjc-framework-Quartz`).
+> Window IDs change on every app launch — always re-query.
 
 ### Interaction with cliclick
 
