@@ -110,6 +110,37 @@ struct VolumeFractionTests {
   }
 }
 
+@Suite("PlayerControlMath.volumeIconName")
+struct VolumeIconNameTests {
+  @Test("returns speaker.slash during external playback regardless of volume")
+  func externalPlaybackShowsSlash() {
+    #expect(PlayerControlMath.volumeIconName(volume: 0, isExternalPlayback: true) == "speaker.slash")
+    #expect(PlayerControlMath.volumeIconName(volume: 0.5, isExternalPlayback: true) == "speaker.slash")
+    #expect(PlayerControlMath.volumeIconName(volume: 1.0, isExternalPlayback: true) == "speaker.slash")
+  }
+
+  @Test("returns speaker.slash.fill when muted locally")
+  func mutedShowsSlashFill() {
+    #expect(PlayerControlMath.volumeIconName(volume: 0, isExternalPlayback: false) == "speaker.slash.fill")
+  }
+
+  @Test("returns wave.1 for low volume")
+  func lowVolume() {
+    #expect(PlayerControlMath.volumeIconName(volume: 0.2, isExternalPlayback: false) == "speaker.wave.1.fill")
+  }
+
+  @Test("returns wave.2 for medium volume")
+  func mediumVolume() {
+    #expect(PlayerControlMath.volumeIconName(volume: 0.5, isExternalPlayback: false) == "speaker.wave.2.fill")
+  }
+
+  @Test("returns wave.3 for high volume")
+  func highVolume() {
+    #expect(PlayerControlMath.volumeIconName(volume: 0.8, isExternalPlayback: false) == "speaker.wave.3.fill")
+    #expect(PlayerControlMath.volumeIconName(volume: 1.0, isExternalPlayback: false) == "speaker.wave.3.fill")
+  }
+}
+
 @Suite("ControlBarLayout")
 struct ControlBarLayoutTests {
   @Test("live mode is compact — no scrubber, no time labels, no speed, no expansion")
@@ -152,6 +183,54 @@ struct ControlBarLayoutTests {
     #expect(layout.showsTimeLabels == true)
     #expect(layout.showsSpeedControl == true)
     #expect(layout.expandsToFillWidth == true)
+  }
+
+  @Test("volume is interactive by default (no external playback)")
+  func volumeInteractiveByDefault() {
+    let layout = ControlBarLayout(isLive: false, duration: 120)
+    #expect(layout.isVolumeInteractive == true)
+  }
+
+  @Test("volume is not interactive during external playback (AirPlay)")
+  func volumeDisabledDuringAirPlay() {
+    let layout = ControlBarLayout(isLive: false, duration: 120, isExternalPlaybackActive: true)
+    #expect(layout.isVolumeInteractive == false)
+  }
+
+  @Test("volume is not interactive during external playback in live mode")
+  func volumeDisabledDuringAirPlayLive() {
+    let layout = ControlBarLayout(isLive: true, duration: 0, isExternalPlaybackActive: true)
+    #expect(layout.isVolumeInteractive == false)
+  }
+}
+
+@Suite("ControlBarLayout.shouldCloseVolumePopover")
+struct ShouldCloseVolumePopoverTests {
+  @Test("closes popover when external playback activates and popover is showing")
+  func closesWhenAirPlayActivates() {
+    let result = ControlBarLayout.shouldCloseVolumePopover(
+      showingPopover: true,
+      isExternalPlaybackActive: true
+    )
+    #expect(result == true)
+  }
+
+  @Test("does not close popover when external playback deactivates")
+  func noCloseWhenAirPlayEnds() {
+    let result = ControlBarLayout.shouldCloseVolumePopover(
+      showingPopover: true,
+      isExternalPlaybackActive: false
+    )
+    #expect(result == false)
+  }
+
+  @Test("no-op when popover is already hidden")
+  func noOpWhenPopoverHidden() {
+    let result = ControlBarLayout.shouldCloseVolumePopover(
+      showingPopover: false,
+      isExternalPlaybackActive: true
+    )
+    #expect(result == false)
   }
 }
 

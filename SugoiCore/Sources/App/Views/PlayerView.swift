@@ -224,7 +224,11 @@ private struct PlayerControlsOverlay: View {
   @State private var playbackRate: Float = 1.0
 
   private var layout: ControlBarLayout {
-    ControlBarLayout(isLive: playerManager.isLive, duration: playerManager.duration)
+    ControlBarLayout(
+      isLive: playerManager.isLive,
+      duration: playerManager.duration,
+      isExternalPlaybackActive: playerManager.isExternalPlaybackActive
+    )
   }
 
   var body: some View {
@@ -363,6 +367,7 @@ private struct PlayerControlsOverlay: View {
           .frame(width: 28, height: 28)
       }
       .buttonStyle(.borderless)
+      .disabled(!layout.isVolumeInteractive)
       .popover(isPresented: $showVolumePopover, arrowEdge: .bottom) {
         VStack(spacing: 8) {
           GeometryReader { geo in
@@ -392,6 +397,14 @@ private struct PlayerControlsOverlay: View {
         .padding(8)
         .onChange(of: volume) { _, newValue in
           player.volume = newValue
+        }
+      }
+      .onChange(of: playerManager.isExternalPlaybackActive) { _, isExternal in
+        if ControlBarLayout.shouldCloseVolumePopover(
+          showingPopover: showVolumePopover,
+          isExternalPlaybackActive: isExternal
+        ) {
+          showVolumePopover = false
         }
       }
 
@@ -428,10 +441,10 @@ private struct PlayerControlsOverlay: View {
   }
 
   private var volumeIcon: String {
-    if volume == 0 { return "speaker.slash.fill" }
-    if volume < 0.33 { return "speaker.wave.1.fill" }
-    if volume < 0.66 { return "speaker.wave.2.fill" }
-    return "speaker.wave.3.fill"
+    PlayerControlMath.volumeIconName(
+      volume: volume,
+      isExternalPlayback: playerManager.isExternalPlaybackActive
+    )
   }
 
   private func showControls() {
@@ -522,6 +535,17 @@ enum PlayerControlMath {
     let fraction = 1.0 - (locationY / trackHeight)
     return Float(min(max(fraction, 0), 1))
   }
+
+  /// SF Symbol name for the volume button.
+  /// Returns `speaker.slash` during external playback (AirPlay) since the
+  /// remote device controls its own volume and `AVPlayer.volume` has no effect.
+  static func volumeIconName(volume: Float, isExternalPlayback: Bool) -> String {
+    if isExternalPlayback { return "speaker.slash" }
+    if volume == 0 { return "speaker.slash.fill" }
+    if volume < 0.33 { return "speaker.wave.1.fill" }
+    if volume < 0.66 { return "speaker.wave.2.fill" }
+    return "speaker.wave.3.fill"
+  }
 }
 
 /// Layout decisions for the player control bar.
@@ -532,13 +556,25 @@ struct ControlBarLayout {
   let showsTimeLabels: Bool
   let showsSpeedControl: Bool
   let expandsToFillWidth: Bool
+  let isVolumeInteractive: Bool
 
-  init(isLive: Bool, duration: TimeInterval) {
+  init(isLive: Bool, duration: TimeInterval, isExternalPlaybackActive: Bool = false) {
     showsLiveBadge = isLive
     showsScrubber = !isLive && duration > 0
     showsTimeLabels = !isLive
     showsSpeedControl = !isLive
     expandsToFillWidth = !isLive
+    isVolumeInteractive = !isExternalPlaybackActive
+  }
+
+  /// Whether a volume popover should be force-closed in response to an
+  /// external-playback state change. Returns true when the popover is showing
+  /// and external playback just became active.
+  static func shouldCloseVolumePopover(
+    showingPopover: Bool,
+    isExternalPlaybackActive: Bool
+  ) -> Bool {
+    showingPopover && isExternalPlaybackActive
   }
 
   /// Whether the controls overlay is allowed to auto-hide after inactivity.

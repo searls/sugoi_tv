@@ -57,6 +57,106 @@ private struct MacSignedOutPlaceholder: View {
 }
 #endif
 
+// MARK: - Container Previews
+
+#if DEBUG
+
+/// Returns canned channel data for any API request, enabling previews without network access.
+private actor PreviewChannelAPIClient: APIClientProtocol {
+  func get<T: Decodable & Sendable>(url: URL, headers: [String: String]) async throws -> T {
+    try JSONDecoder().decode(T.self, from: Data(Self.channelJSON.utf8))
+  }
+
+  func post<Body: Encodable & Sendable, Response: Decodable & Sendable>(
+    url: URL, headers: [String: String], body: Body
+  ) async throws -> Response {
+    fatalError("Unused in preview")
+  }
+
+  private static let channelJSON = """
+  {"code":"OK","result":[
+    {"id":"CH1","name":"NHK総合","description":"NHK General","tags":"$LIVE_CAT_関東","no":1,"playpath":"/query/s/nhk","running":1},
+    {"id":"CH2","name":"NHK Eテレ","description":"NHK Educational","tags":"$LIVE_CAT_関東","no":2,"playpath":"/query/s/nhke","running":1},
+    {"id":"CH3","name":"日本テレビ","description":"Nippon TV","tags":"$LIVE_CAT_関東","no":3,"playpath":"/query/s/ntv","running":0},
+    {"id":"CH4","name":"テレビ朝日","description":"TV Asahi","tags":"$LIVE_CAT_関東","no":4,"playpath":"/query/s/tvasahi","running":0},
+    {"id":"CH5","name":"TBSテレビ","description":"TBS Television","tags":"$LIVE_CAT_関東","no":5,"playpath":"/query/s/tbs","running":1},
+    {"id":"CH6","name":"フジテレビ","description":"Fuji TV","tags":"$LIVE_CAT_関東","no":6,"playpath":"/query/s/fuji","running":1},
+    {"id":"CH7","name":"MBS毎日放送","description":"MBS","tags":"$LIVE_CAT_関西","no":7,"playpath":"/query/s/mbs","running":1},
+    {"id":"CH8","name":"ABCテレビ","description":"ABC Television","tags":"$LIVE_CAT_関西","no":8,"playpath":"/query/s/abc","running":0},
+    {"id":"CH9","name":"BS日テレ","description":"BS NTV","tags":"$LIVE_CAT_BS","no":9,"playpath":"/query/s/bsntv","running":1},
+    {"id":"CH10","name":"BS朝日","description":"BS Asahi","tags":"$LIVE_CAT_BS","no":10,"playpath":"/query/s/bsasahi","running":0}
+  ]}
+  """
+}
+
+private let previewProductConfig: ProductConfig = {
+  try! JSONDecoder().decode(ProductConfig.self, from: Data("""
+  {"vms_host":"http://preview.local:9083","vms_uid":"uid","vms_live_cid":"cid","vms_referer":"http://play.yoitv.com"}
+  """.utf8))
+}()
+
+private let previewSession = AuthService.Session(
+  accessToken: "tok", refreshToken: "ref", cid: "cid", config: previewProductConfig
+)
+
+#if os(macOS)
+private struct MacContainerPreview: View {
+  @State private var appState: AppState
+
+  init() {
+    let mock: any APIClientProtocol = PreviewChannelAPIClient()
+    let keychain = KeychainService()
+    _appState = State(initialValue: AppState(
+      keychain: keychain,
+      apiClient: APIClient(),
+      authService: AuthService(keychain: keychain, apiClient: mock),
+      channelService: ChannelService(apiClient: mock),
+      epgService: EPGService(apiClient: mock)
+    ))
+  }
+
+  var body: some View {
+    MacAuthenticatedContainer(appState: appState, session: previewSession)
+  }
+}
+
+#Preview("Mac — Sidebar") {
+  MacContainerPreview()
+    .frame(width: 900, height: 600)
+}
+#endif
+
+private struct PhoneContainerPreview: View {
+  @State private var appState: AppState
+
+  init() {
+    let mock: any APIClientProtocol = PreviewChannelAPIClient()
+    let keychain = KeychainService()
+    _appState = State(initialValue: AppState(
+      keychain: keychain,
+      apiClient: APIClient(),
+      authService: AuthService(keychain: keychain, apiClient: mock),
+      channelService: ChannelService(apiClient: mock),
+      epgService: EPGService(apiClient: mock)
+    ))
+  }
+
+  var body: some View {
+    AuthenticatedContainer(
+      appState: appState,
+      session: previewSession,
+      initialGuideVisible: true
+    )
+  }
+}
+
+#Preview("iPhone — Overlay Guide") {
+  PhoneContainerPreview()
+    .frame(width: 393, height: 852)
+}
+
+#endif
+
 // MARK: - Permission error detection
 
 private extension String {
@@ -146,15 +246,16 @@ final class ChannelPlaybackController {
 private struct AuthenticatedContainer: View {
   let appState: AppState
   @State private var controller: ChannelPlaybackController
-  @State private var showingGuide = false
+  @State private var showingGuide: Bool
 
   private let sidebarWidth: CGFloat = 340
 
-  init(appState: AppState, session: AuthService.Session) {
+  init(appState: AppState, session: AuthService.Session, initialGuideVisible: Bool = false) {
     self.appState = appState
     self._controller = State(initialValue: ChannelPlaybackController(
       appState: appState, session: session
     ))
+    self._showingGuide = State(initialValue: initialGuideVisible)
   }
 
   var body: some View {
@@ -244,6 +345,28 @@ private struct AuthenticatedContainer: View {
   }
 }
 
+// MARK: - Sidebar persistence
+
+#if os(macOS)
+/// Pure logic for deciding initial sidebar visibility on launch.
+/// Defaults to open (doubleColumn) on first launch or after 12+ hours of inactivity.
+public enum SidebarPersistence {
+  /// Returns `true` when the sidebar should be visible (doubleColumn),
+  /// `false` when it should be hidden (detailOnly).
+  public static func shouldShowSidebar(
+    wasSidebarVisible: Bool,
+    lastActiveTimestamp: TimeInterval,
+    now: TimeInterval,
+    staleThreshold: TimeInterval = 12 * 3600
+  ) -> Bool {
+    guard lastActiveTimestamp > 0 else { return true } // first launch
+    let elapsed = now - lastActiveTimestamp
+    if elapsed >= staleThreshold { return true }
+    return wasSidebarVisible
+  }
+}
+#endif
+
 // MARK: - macOS native sidebar layout
 
 #if os(macOS)
@@ -252,7 +375,10 @@ private struct MacAuthenticatedContainer: View {
   let appState: AppState
   @State private var controller: ChannelPlaybackController
   @State private var columnVisibility: NavigationSplitViewVisibility = .doubleColumn
+  @AppStorage("sidebarVisible") private var sidebarVisible = true
+  @AppStorage("lastActiveTimestamp") private var lastActiveTimestamp: Double = 0
   @Environment(\.openSettings) private var openSettings
+  @Environment(\.scenePhase) private var scenePhase
 
   init(appState: AppState, session: AuthService.Session) {
     self.appState = appState
@@ -278,6 +404,25 @@ private struct MacAuthenticatedContainer: View {
         }
     }
     .task { await controller.loadAndAutoSelect() }
+    .onAppear {
+      let show = SidebarPersistence.shouldShowSidebar(
+        wasSidebarVisible: sidebarVisible,
+        lastActiveTimestamp: lastActiveTimestamp,
+        now: Date().timeIntervalSince1970
+      )
+      columnVisibility = show ? .doubleColumn : .detailOnly
+      lastActiveTimestamp = Date().timeIntervalSince1970
+      setTrafficLightsHidden(!show)
+    }
+    .onChange(of: columnVisibility) { _, newValue in
+      sidebarVisible = (newValue != .detailOnly)
+      setTrafficLightsHidden(newValue == .detailOnly)
+    }
+    .onChange(of: scenePhase) { _, newPhase in
+      if newPhase == .background || newPhase == .inactive {
+        lastActiveTimestamp = Date().timeIntervalSince1970
+      }
+    }
     .onChange(of: controller.selectedChannel) { _, channel in
       if let channel { controller.playChannel(channel) }
     }
@@ -334,6 +479,14 @@ private struct MacAuthenticatedContainer: View {
         .accessibilityIdentifier("channelList")
       }
     }
+  }
+}
+
+/// Toggles macOS window traffic lights (close/minimize/zoom) visibility.
+@MainActor private func setTrafficLightsHidden(_ hidden: Bool) {
+  guard let window = NSApplication.shared.mainWindow ?? NSApplication.shared.windows.first(where: \.isVisible) else { return }
+  for buttonType: NSWindow.ButtonType in [.closeButton, .miniaturizeButton, .zoomButton] {
+    window.standardWindowButton(buttonType)?.isHidden = hidden
   }
 }
 #endif
