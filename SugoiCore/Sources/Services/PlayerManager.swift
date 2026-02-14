@@ -55,7 +55,16 @@ public final class PlayerManager {
     return AVURLAsset(url: url, options: options)
   }
 
+  private func configureAudioSession() {
+    #if os(iOS) || os(tvOS)
+    let session = AVAudioSession.sharedInstance()
+    try? session.setCategory(.playback, mode: .moviePlayback)
+    try? session.setActive(true)
+    #endif
+  }
+
   private func loadAsset(_ asset: AVURLAsset, isLive: Bool, resumeFrom: TimeInterval = 0) {
+    configureAudioSession()
     // When AirPlay is active and we already have a player, swap the item
     // instead of tearing down the player. Creating a new AVPlayer severs the
     // AirPlay route; replaceCurrentItem(with:) preserves it.

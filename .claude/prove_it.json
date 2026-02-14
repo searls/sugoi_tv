@@ -9,6 +9,9 @@
     "**/*.pbxproj",
     "**/*.xctestplan"
   ],
+  "fileEditingTools": [
+    "XcodeEdit"
+  ],
   "hooks": [
     {
       "type": "claude",
@@ -47,6 +50,17 @@
           "name": "fast-tests",
           "type": "script",
           "command": "./script/test_fast"
+        },
+        {
+          "name": "coverage-review",
+          "type": "agent",
+          "promptType": "reference",
+          "prompt": "review:test_coverage",
+          "model": "haiku",
+          "ruleFile": ".claude/rules/testing.md",
+          "when": {
+            "sourceFilesEdited": true
+          }
         }
       ]
     },
@@ -75,5 +89,5 @@
       ]
     }
   ],
-  "initSeed": "a032c010a440"
+  "initSeed": "039c477ded80"
 }

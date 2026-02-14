@@ -114,6 +114,7 @@ struct PassthroughPlayerView: UIViewRepresentable {
     if let binding = pipController,
        AVPictureInPictureController.isPictureInPictureSupported() {
       let pip = AVPictureInPictureController(playerLayer: view.playerLayer)
+      pip?.canStartPictureInPictureAutomaticallyFromInline = true
       DispatchQueue.main.async {
         binding.wrappedValue = pip
       }

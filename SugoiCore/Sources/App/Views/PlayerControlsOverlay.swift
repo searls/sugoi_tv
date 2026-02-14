@@ -235,6 +235,7 @@ struct PlayerControlsOverlay: View {
     }
     .padding(.horizontal, 16)
     .padding(.vertical, 10)
+    .tint(.primary)
     .glassEffect(in: .rect(cornerRadius: 16))
     .frame(maxWidth: 640)
   }
