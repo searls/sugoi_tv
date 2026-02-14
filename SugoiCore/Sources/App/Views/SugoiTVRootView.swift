@@ -215,24 +215,6 @@ final class ChannelPlaybackController {
   }
 }
 
-// MARK: - Traffic light glass backing
-
-#if os(macOS)
-/// Pure layout logic for the glass capsule behind traffic lights.
-/// Extracted for testability — the view layer defers to `isVisible`.
-public enum TrafficLightGlassLayout {
-  /// The glass backing should show when the sidebar is hidden (detailOnly),
-  /// leaving the traffic lights floating over video content.
-  public static func isVisible(
-    _ visibility: NavigationSplitViewVisibility
-  ) -> Bool {
-    visibility == .detailOnly
-  }
-}
-
-
-#endif
-
 // MARK: - Sidebar persistence
 
 /// Pure logic for deciding initial sidebar visibility on launch.
@@ -283,7 +265,7 @@ private struct AuthenticatedContainer: View {
       ZStack(alignment: .topLeading) {
         PlayerView(playerManager: controller.playerManager)
         #if os(macOS)
-        if TrafficLightGlassLayout.isVisible(columnVisibility) {
+        if columnVisibility == .detailOnly {
           trafficLightGlassBacking
         }
         #endif
@@ -394,13 +376,7 @@ private struct AuthenticatedContainer: View {
 
   #if os(macOS)
   /// Liquid Glass capsule positioned behind the window's traffic light buttons.
-  /// Placed in a ZStack with .ignoresSafeArea() so coordinates are relative to the window origin.
-  ///
-  /// Tuning guide:
-  /// - `padding(.top, N)` — increase N to move capsule DOWN, decrease to move UP
-  /// - `padding(.leading, N)` — increase N to move capsule RIGHT, decrease to move LEFT
-  /// - `frame(width:)` — width of the capsule (traffic lights span ~54pt)
-  /// - `frame(height:)` — height of the capsule
+  /// Placed in a ZStack with `.ignoresSafeArea()` so coordinates are relative to the window origin.
   private var trafficLightGlassBacking: some View {
     Color.clear
       .frame(width: 74, height: 32)
@@ -410,5 +386,4 @@ private struct AuthenticatedContainer: View {
   }
   #endif
 }
-
 
