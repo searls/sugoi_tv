@@ -105,6 +105,103 @@ struct AirPlayPickerViewTests {
     coordinator.routePickerViewDidEndPresentingRoutes(AVRoutePickerView())
   }
 }
+
+#elseif os(iOS)
+import AVKit
+
+@Suite("PassthroughPlayerView (iOS)")
+struct PassthroughPlayerViewTests {
+  @Test("player layer is connected to player")
+  @MainActor
+  func playerLayerConnected() {
+    let player = AVPlayer()
+    let uiView = PassthroughPlayerView.makeConfiguredView(player: player)
+
+    #expect(uiView.playerLayer.player === player)
+  }
+
+  @Test("video gravity is resizeAspect")
+  @MainActor
+  func videoGravityIsAspect() {
+    let player = AVPlayer()
+    let uiView = PassthroughPlayerView.makeConfiguredView(player: player)
+
+    #expect(uiView.playerLayer.videoGravity == .resizeAspect)
+  }
+
+  @Test("hitTest returns nil for event passthrough")
+  @MainActor
+  func hitTestReturnsNil() {
+    let player = AVPlayer()
+    let uiView = PassthroughPlayerView.makeConfiguredView(player: player)
+    uiView.frame = CGRect(x: 0, y: 0, width: 100, height: 100)
+
+    #expect(uiView.hitTest(CGPoint(x: 50, y: 50), with: nil) == nil)
+  }
+
+  @Test("layer class is AVPlayerLayer")
+  @MainActor
+  func layerClassIsAVPlayerLayer() {
+    #expect(PassthroughPlayerUIView.layerClass == AVPlayerLayer.self)
+  }
+
+  @Test("background is black for letterbox bars")
+  @MainActor
+  func backgroundIsBlack() {
+    let player = AVPlayer()
+    let uiView = PassthroughPlayerView.makeConfiguredView(player: player)
+
+    #expect(uiView.backgroundColor == .black)
+  }
+}
+
+@Suite("AirPlayPickerView (iOS)")
+struct AirPlayPickerViewTests {
+  @Test("creates picker view")
+  @MainActor
+  func createsPickerView() {
+    let picker = AirPlayPickerView.makeConfiguredView()
+
+    #expect(picker is AVRoutePickerView)
+  }
+
+  @Test("coordinator calls closure with true on willBeginPresentingRoutes")
+  @MainActor
+  func coordinatorCallsTrueOnBegin() {
+    var captured: Bool?
+    let coordinator = AirPlayPickerView.Coordinator(
+      onPresentingRoutesChanged: { captured = $0 }
+    )
+
+    coordinator.routePickerViewWillBeginPresentingRoutes(AVRoutePickerView())
+
+    #expect(captured == true)
+  }
+
+  @Test("coordinator calls closure with false on didEndPresentingRoutes")
+  @MainActor
+  func coordinatorCallsFalseOnEnd() {
+    var captured: Bool?
+    let coordinator = AirPlayPickerView.Coordinator(
+      onPresentingRoutesChanged: { captured = $0 }
+    )
+
+    coordinator.routePickerViewDidEndPresentingRoutes(AVRoutePickerView())
+
+    #expect(captured == false)
+  }
+
+  @Test("coordinator with nil closure does not crash")
+  @MainActor
+  func coordinatorNilClosureNoCrash() {
+    let coordinator = AirPlayPickerView.Coordinator(
+      onPresentingRoutesChanged: nil
+    )
+
+    coordinator.routePickerViewWillBeginPresentingRoutes(AVRoutePickerView())
+    coordinator.routePickerViewDidEndPresentingRoutes(AVRoutePickerView())
+  }
+}
 #endif
 
 // MARK: - Cross-platform: PlayerManager with video fixture

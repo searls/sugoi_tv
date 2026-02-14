@@ -47,17 +47,6 @@
           "name": "fast-tests",
           "type": "script",
           "command": "./script/test_fast"
-        },
-        {
-          "name": "coverage-review",
-          "type": "agent",
-          "promptType": "reference",
-          "prompt": "review:test_coverage",
-          "model": "haiku",
-          "ruleFile": ".claude/rules/testing.md",
-          "when": {
-            "sourcesModifiedSinceLastRun": true
-          }
         }
       ]
     },

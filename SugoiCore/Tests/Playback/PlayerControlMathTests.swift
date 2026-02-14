@@ -3,8 +3,6 @@ import Testing
 
 @testable import SugoiCore
 
-#if os(macOS)
-
 @Suite("PlayerControlMath.scrubFraction")
 struct ScrubFractionTests {
   @Test("mid-track returns 0.5")
@@ -185,6 +183,20 @@ struct ControlBarLayoutTests {
     #expect(layout.expandsToFillWidth == true)
   }
 
+  #if os(macOS)
+  @Test("macOS shows volume control")
+  func macOSShowsVolumeControl() {
+    let layout = ControlBarLayout(isLive: false, duration: 120)
+    #expect(layout.showsVolumeControl == true)
+  }
+  #else
+  @Test("iOS hides volume control (hardware buttons)")
+  func iOSHidesVolumeControl() {
+    let layout = ControlBarLayout(isLive: false, duration: 120)
+    #expect(layout.showsVolumeControl == false)
+  }
+  #endif
+
   @Test("volume is interactive by default (no external playback)")
   func volumeInteractiveByDefault() {
     let layout = ControlBarLayout(isLive: false, duration: 120)
@@ -292,4 +304,74 @@ struct AllowsAutoHideTests {
   }
 }
 
-#endif
+@Suite("ControlsVisibilityState")
+struct ControlsVisibilityStateTests {
+  @Test("starts visible")
+  @MainActor
+  func startsVisible() {
+    let state = ControlsVisibilityState()
+    #expect(state.isVisible == true)
+  }
+
+  @Test("hide sets isVisible to false")
+  @MainActor
+  func hideWorks() {
+    let state = ControlsVisibilityState()
+    state.hide()
+    #expect(state.isVisible == false)
+  }
+
+  @Test("show after hide restores visibility")
+  @MainActor
+  func showAfterHide() {
+    let state = ControlsVisibilityState()
+    state.hide()
+    state.show(allowsAutoHide: false)
+    #expect(state.isVisible == true)
+  }
+
+  @Test("toggle hides when visible")
+  @MainActor
+  func toggleHidesWhenVisible() {
+    let state = ControlsVisibilityState()
+    #expect(state.isVisible == true)
+    state.toggle(allowsAutoHide: false)
+    #expect(state.isVisible == false)
+  }
+
+  @Test("toggle shows when hidden")
+  @MainActor
+  func toggleShowsWhenHidden() {
+    let state = ControlsVisibilityState()
+    state.hide()
+    state.toggle(allowsAutoHide: false)
+    #expect(state.isVisible == true)
+  }
+
+  @Test("scheduleHide does not hide immediately")
+  @MainActor
+  func scheduleHideNotImmediate() {
+    let state = ControlsVisibilityState()
+    state.scheduleHide(allowsAutoHide: true)
+    #expect(state.isVisible == true)
+  }
+
+  @Test("scheduleHide with allowsAutoHide false keeps visible")
+  @MainActor
+  func scheduleHideBlockedKeepsVisible() async throws {
+    let state = ControlsVisibilityState()
+    state.scheduleHide(allowsAutoHide: false)
+    try await Task.sleep(for: .milliseconds(100))
+    #expect(state.isVisible == true)
+  }
+
+  @Test("cancelHide prevents auto-hide")
+  @MainActor
+  func cancelHidePreventsHide() async throws {
+    let state = ControlsVisibilityState()
+    state.scheduleHide(allowsAutoHide: true)
+    state.cancelHide()
+    try await Task.sleep(for: .milliseconds(100))
+    #expect(state.isVisible == true)
+  }
+}
