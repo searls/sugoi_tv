@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import Testing
 
 @testable import SugoiCore
@@ -179,5 +180,57 @@ struct ChannelPlaybackControllerSidebarCollapseTests {
 
     controller.playerManager.setExternalPlaybackActiveForTesting(false)
     #expect(controller.shouldCollapseSidebarOnTap == true)
+  }
+}
+
+@Suite("ChannelPlaybackController.preferredCompactColumn")
+@MainActor
+struct ChannelPlaybackControllerCompactColumnTests {
+  nonisolated static var testLoginJSON: String {
+    ChannelPlaybackControllerAutoSelectTests.testLoginJSON
+  }
+
+  nonisolated static var channelsJSON: String {
+    ChannelPlaybackControllerAutoSelectTests.channelsJSON
+  }
+
+  private func makeController() throws -> ChannelPlaybackController {
+    let mock = MockHTTPSession()
+    mock.requestHandler = { _ in
+      let response = HTTPURLResponse(
+        url: URL(string: "http://test.com")!, statusCode: 200, httpVersion: nil, headerFields: nil
+      )!
+      return (response, Data(Self.channelsJSON.utf8))
+    }
+    let client = APIClient(session: mock.session)
+    let auth = AuthService(keychain: MockKeychainService(), apiClient: client)
+    let channels = ChannelService(apiClient: client)
+    let epg = EPGService(apiClient: client)
+    let appState = AppState(apiClient: client, authService: auth, channelService: channels, epgService: epg)
+
+    let loginResponse = try JSONDecoder().decode(LoginResponse.self, from: Data(Self.testLoginJSON.utf8))
+    let config = try loginResponse.parseProductConfig()
+    let session = AuthService.Session(from: loginResponse, config: config)
+
+    return ChannelPlaybackController(appState: appState, session: session)
+  }
+
+  @Test("Starts on sidebar column for compact layouts")
+  func startsOnSidebar() throws {
+    let controller = try makeController()
+    #expect(controller.preferredCompactColumn == .sidebar)
+  }
+
+  @Test("Switches to detail column when playing a channel")
+  func switchesToDetailOnPlay() async throws {
+    let controller = try makeController()
+    await controller.loadAndAutoSelect()
+
+    #expect(controller.preferredCompactColumn == .sidebar)
+
+    if let channel = controller.selectedChannel {
+      controller.playChannel(channel)
+    }
+    #expect(controller.preferredCompactColumn == .detail)
   }
 }

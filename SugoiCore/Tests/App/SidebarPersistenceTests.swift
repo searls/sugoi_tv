@@ -1,4 +1,3 @@
-#if os(macOS)
 import Foundation
 import Testing
 @testable import SugoiCore
@@ -93,4 +92,3 @@ struct SidebarPersistenceTests {
     #expect(result == false)
   }
 }
-#endif

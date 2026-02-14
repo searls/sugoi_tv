@@ -12,11 +12,7 @@ public struct SugoiTVRootView: View {
       if appState.isRestoringSession {
         ProgressView("Restoring session…")
       } else if let session = appState.session {
-        #if os(macOS)
-        MacAuthenticatedContainer(appState: appState, session: session)
-        #else
         AuthenticatedContainer(appState: appState, session: session)
-        #endif
       } else {
         #if os(macOS)
         MacSignedOutPlaceholder()
@@ -99,8 +95,7 @@ private let previewSession = AuthService.Session(
   accessToken: "tok", refreshToken: "ref", cid: "cid", config: previewProductConfig
 )
 
-#if os(macOS)
-private struct MacContainerPreview: View {
+private struct ContainerPreview: View {
   @State private var appState: AppState
 
   init() {
@@ -116,42 +111,17 @@ private struct MacContainerPreview: View {
   }
 
   var body: some View {
-    MacAuthenticatedContainer(appState: appState, session: previewSession)
+    AuthenticatedContainer(appState: appState, session: previewSession)
   }
 }
 
-#Preview("Mac — Sidebar") {
-  MacContainerPreview()
+#Preview("Mac") {
+  ContainerPreview()
     .frame(width: 900, height: 600)
 }
-#endif
 
-private struct PhoneContainerPreview: View {
-  @State private var appState: AppState
-
-  init() {
-    let mock: any APIClientProtocol = PreviewChannelAPIClient()
-    let keychain = KeychainService()
-    _appState = State(initialValue: AppState(
-      keychain: keychain,
-      apiClient: APIClient(),
-      authService: AuthService(keychain: keychain, apiClient: mock),
-      channelService: ChannelService(apiClient: mock),
-      epgService: EPGService(apiClient: mock)
-    ))
-  }
-
-  var body: some View {
-    AuthenticatedContainer(
-      appState: appState,
-      session: previewSession,
-      initialGuideVisible: true
-    )
-  }
-}
-
-#Preview("iPhone — Overlay Guide") {
-  PhoneContainerPreview()
+#Preview("iPhone") {
+  ContainerPreview()
     .frame(width: 393, height: 852)
 }
 
@@ -183,6 +153,10 @@ final class ChannelPlaybackController {
   /// One-shot guard: allows a single reauth attempt per stream load.
   /// Reset to false in playChannel(), set to true after attempting reauth.
   var hasAttemptedReauth = false
+
+  /// On compact layouts (iPhone), which column the NavigationSplitView should show.
+  /// Starts at `.sidebar` so the channel list appears first; switches to `.detail` on play.
+  var preferredCompactColumn: NavigationSplitViewColumn = .sidebar
 
   /// Local HTTP proxy that injects Referer headers for AirPlay compatibility.
   /// When ready, stream URLs route through this proxy so the Apple TV can
@@ -221,6 +195,7 @@ final class ChannelPlaybackController {
   func playChannel(_ channel: ChannelDTO) {
     hasAttemptedReauth = false
     lastChannelId = channel.id
+    preferredCompactColumn = .detail
     guard let url = StreamURLBuilder.liveStreamURL(
       liveHost: session.productConfig.liveHost,
       playpath: channel.playpath,
@@ -240,114 +215,8 @@ final class ChannelPlaybackController {
   }
 }
 
-// MARK: - iOS overlay sidebar layout
-
-/// Video-first layout: player fills the window, channel guide slides in as a sidebar
-private struct AuthenticatedContainer: View {
-  let appState: AppState
-  @State private var controller: ChannelPlaybackController
-  @State private var showingGuide: Bool
-
-  private let sidebarWidth: CGFloat = 340
-
-  init(appState: AppState, session: AuthService.Session, initialGuideVisible: Bool = false) {
-    self.appState = appState
-    self._controller = State(initialValue: ChannelPlaybackController(
-      appState: appState, session: session
-    ))
-    self._showingGuide = State(initialValue: initialGuideVisible)
-  }
-
-  var body: some View {
-    ZStack(alignment: .topLeading) {
-      PlayerView(playerManager: controller.playerManager)
-
-      if showingGuide {
-        // Dimming scrim behind sidebar
-        Color.black.opacity(0.3)
-          .onTapGesture { withAnimation { showingGuide = false } }
-
-        sidebar
-          .transition(.move(edge: .leading))
-      }
-
-      if !showingGuide {
-        guideButton
-      }
-    }
-    .ignoresSafeArea()
-    .task { await controller.loadAndAutoSelect() }
-    .onChange(of: controller.selectedChannel) { _, channel in
-      if let channel { controller.playChannel(channel) }
-    }
-    .onChange(of: controller.playerManager.state) { _, newState in
-      if case .failed(let message) = newState,
-         message.looksLikePermissionError,
-         !controller.hasAttemptedReauth {
-        controller.hasAttemptedReauth = true
-        controller.playerManager.clearError()
-        Task {
-          if let newSession = await appState.reauthenticate() {
-            controller.session = newSession
-            if let channel = controller.selectedChannel {
-              controller.playChannel(channel)
-            }
-          }
-        }
-      }
-    }
-  }
-
-  private var guideButton: some View {
-    Button {
-      withAnimation { showingGuide = true }
-    } label: {
-      Image(systemName: "sidebar.leading")
-        .font(.title)
-    }
-    .buttonStyle(.glass)
-    .padding()
-    .accessibilityIdentifier("channelGuideButton")
-  }
-
-  private var sidebar: some View {
-    VStack(spacing: 0) {
-      Button {
-        withAnimation { showingGuide = false }
-      } label: {
-        Image(systemName: "sidebar.leading")
-          .font(.title)
-      }
-      .buttonStyle(.glass)
-      .frame(maxWidth: .infinity, alignment: .leading)
-      .padding()
-
-      ChannelListView(
-        viewModel: controller.channelListVM,
-        onSelectChannel: { channel in
-          controller.selectedChannel = channel
-          withAnimation { showingGuide = false }
-        }
-      )
-
-      Divider()
-
-      Button("Sign Out") {
-        Task { await appState.logout() }
-      }
-      .accessibilityIdentifier("signOutButton")
-      .padding()
-      .frame(maxWidth: .infinity, alignment: .leading)
-    }
-    .frame(width: sidebarWidth)
-    .frame(maxHeight: .infinity)
-    .background(.ultraThinMaterial)
-  }
-}
-
 // MARK: - Sidebar persistence
 
-#if os(macOS)
 /// Pure logic for deciding initial sidebar visibility on launch.
 /// Defaults to open (doubleColumn) on first launch or after 12+ hours of inactivity.
 public enum SidebarPersistence {
@@ -365,20 +234,21 @@ public enum SidebarPersistence {
     return wasSidebarVisible
   }
 }
-#endif
 
-// MARK: - macOS native sidebar layout
+// MARK: - Unified authenticated container
 
-#if os(macOS)
-/// Native NavigationSplitView layout for macOS: sidebar with channel list, detail with player
-private struct MacAuthenticatedContainer: View {
+/// NavigationSplitView layout for all platforms: sidebar with channel list, detail with player.
+/// On Mac and iPad, shows sidebar + detail side-by-side. On iPhone, collapses to push/pop stack.
+private struct AuthenticatedContainer: View {
   let appState: AppState
   @State private var controller: ChannelPlaybackController
   @State private var columnVisibility: NavigationSplitViewVisibility = .doubleColumn
   @AppStorage("sidebarVisible") private var sidebarVisible = true
   @AppStorage("lastActiveTimestamp") private var lastActiveTimestamp: Double = 0
-  @Environment(\.openSettings) private var openSettings
   @Environment(\.scenePhase) private var scenePhase
+  #if os(macOS)
+  @Environment(\.openSettings) private var openSettings
+  #endif
 
   init(appState: AppState, session: AuthService.Session) {
     self.appState = appState
@@ -388,12 +258,13 @@ private struct MacAuthenticatedContainer: View {
   }
 
   var body: some View {
-    NavigationSplitView(columnVisibility: $columnVisibility) {
+    NavigationSplitView(columnVisibility: $columnVisibility, preferredCompactColumn: $controller.preferredCompactColumn) {
       sidebarContent
         .navigationSplitViewColumnWidth(min: 220, ideal: 280, max: 360)
     } detail: {
       PlayerView(playerManager: controller.playerManager)
         .ignoresSafeArea()
+        #if os(macOS)
         .onTapGesture {
           guard controller.shouldCollapseSidebarOnTap else { return }
           if columnVisibility != .detailOnly {
@@ -402,6 +273,7 @@ private struct MacAuthenticatedContainer: View {
             }
           }
         }
+        #endif
     }
     .task { await controller.loadAndAutoSelect() }
     .onAppear {
@@ -412,11 +284,15 @@ private struct MacAuthenticatedContainer: View {
       )
       columnVisibility = show ? .doubleColumn : .detailOnly
       lastActiveTimestamp = Date().timeIntervalSince1970
+      #if os(macOS)
       setTrafficLightsHidden(!show)
+      #endif
     }
     .onChange(of: columnVisibility) { _, newValue in
       sidebarVisible = (newValue != .detailOnly)
+      #if os(macOS)
       setTrafficLightsHidden(newValue == .detailOnly)
+      #endif
     }
     .onChange(of: scenePhase) { _, newPhase in
       if newPhase == .background || newPhase == .inactive {
@@ -433,55 +309,74 @@ private struct MacAuthenticatedContainer: View {
         controller.hasAttemptedReauth = true
         controller.playerManager.clearError()
         Task {
-          if let newSession = await appState.reauthenticate() {
+          let newSession = await appState.reauthenticate()
+          if let newSession {
             controller.session = newSession
             if let channel = controller.selectedChannel {
               controller.playChannel(channel)
             }
-          } else {
+          }
+          #if os(macOS)
+          if newSession == nil {
             openSettings()
           }
+          #endif
         }
       }
     }
   }
 
   private var sidebarContent: some View {
-    Group {
-      if controller.channelListVM.isLoading && controller.channelListVM.channelGroups.isEmpty {
-        ProgressView("Loading channels...")
-      } else if let error = controller.channelListVM.errorMessage, controller.channelListVM.channelGroups.isEmpty {
-        ContentUnavailableView {
-          Label("Error", systemImage: "exclamationmark.triangle")
-        } description: {
-          Text(error)
-        } actions: {
-          Button("Retry") { Task { await controller.channelListVM.loadChannels() } }
-        }
-      } else {
-        List(selection: $controller.selectedChannel) {
-          ForEach(controller.channelListVM.filteredGroups, id: \.category) { group in
-            Section(group.category) {
-              ForEach(group.channels) { channel in
-                ChannelRow(
-                  channel: channel,
-                  thumbnailURL: StreamURLBuilder.thumbnailURL(
-                    channelListHost: controller.channelListVM.config.channelListHost,
-                    playpath: channel.playpath
+    VStack(spacing: 0) {
+      Group {
+        if controller.channelListVM.isLoading && controller.channelListVM.channelGroups.isEmpty {
+          ProgressView("Loading channels...")
+        } else if let error = controller.channelListVM.errorMessage, controller.channelListVM.channelGroups.isEmpty {
+          ContentUnavailableView {
+            Label("Error", systemImage: "exclamationmark.triangle")
+          } description: {
+            Text(error)
+          } actions: {
+            Button("Retry") { Task { await controller.channelListVM.loadChannels() } }
+          }
+        } else {
+          List(selection: $controller.selectedChannel) {
+            ForEach(controller.channelListVM.filteredGroups, id: \.category) { group in
+              Section(group.category) {
+                ForEach(group.channels) { channel in
+                  ChannelRow(
+                    channel: channel,
+                    thumbnailURL: StreamURLBuilder.thumbnailURL(
+                      channelListHost: controller.channelListVM.config.channelListHost,
+                      playpath: channel.playpath
+                    )
                   )
-                )
-                  .tag(channel)
+                    .tag(channel)
+                }
               }
             }
           }
+          .listStyle(.sidebar)
+          .accessibilityIdentifier("channelList")
         }
-        .listStyle(.sidebar)
-        .accessibilityIdentifier("channelList")
       }
+
+      #if !os(macOS)
+      Divider()
+      Button("Sign Out") {
+        Task { await appState.logout() }
+      }
+      .accessibilityIdentifier("signOutButton")
+      .padding()
+      .frame(maxWidth: .infinity, alignment: .leading)
+      #endif
     }
   }
 }
 
+// MARK: - macOS traffic light management
+
+#if os(macOS)
 /// Toggles macOS window traffic lights (close/minimize/zoom) visibility.
 @MainActor private func setTrafficLightsHidden(_ hidden: Bool) {
   guard let window = NSApplication.shared.mainWindow ?? NSApplication.shared.windows.first(where: \.isVisible) else { return }
