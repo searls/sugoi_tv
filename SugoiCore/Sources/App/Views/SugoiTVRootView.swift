@@ -284,15 +284,9 @@ private struct AuthenticatedContainer: View {
       )
       columnVisibility = show ? .doubleColumn : .detailOnly
       lastActiveTimestamp = Date().timeIntervalSince1970
-      #if os(macOS)
-      setTrafficLightsHidden(!show)
-      #endif
     }
     .onChange(of: columnVisibility) { _, newValue in
       sidebarVisible = (newValue != .detailOnly)
-      #if os(macOS)
-      setTrafficLightsHidden(newValue == .detailOnly)
-      #endif
     }
     .onChange(of: scenePhase) { _, newPhase in
       if newPhase == .background || newPhase == .inactive {
@@ -374,14 +368,4 @@ private struct AuthenticatedContainer: View {
   }
 }
 
-// MARK: - macOS traffic light management
 
-#if os(macOS)
-/// Toggles macOS window traffic lights (close/minimize/zoom) visibility.
-@MainActor private func setTrafficLightsHidden(_ hidden: Bool) {
-  guard let window = NSApplication.shared.mainWindow ?? NSApplication.shared.windows.first(where: \.isVisible) else { return }
-  for buttonType: NSWindow.ButtonType in [.closeButton, .miniaturizeButton, .zoomButton] {
-    window.standardWindowButton(buttonType)?.isHidden = hidden
-  }
-}
-#endif
