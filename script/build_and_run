@@ -1,0 +1,119 @@
+#!/usr/bin/env bash
+# Build and run the app on a given platform
+#
+# Usage:
+#   script/build_and_run                    # macOS (default)
+#   script/build_and_run --platform mac     # macOS
+#   script/build_and_run --platform iphone  # iPhone simulator
+#   script/build_and_run --platform ipad    # iPad simulator
+#   script/build_and_run --platform appletv # Apple TV simulator
+#
+# macOS: builds and opens the .app, prints the app path
+# Simulator: boots sim, builds, installs, launches, prints the UDID
+set -e
+
+PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+PLATFORM="mac"
+
+usage() {
+  echo "Usage: $0 [--platform mac|iphone|ipad|appletv]"
+  exit 1
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --platform) PLATFORM="$2"; shift 2 ;;
+    -h|--help) usage ;;
+    *) echo "Unknown argument: $1" >&2; usage ;;
+  esac
+done
+
+resolve_destination() {
+  case "$1" in
+    mac)     echo "platform=macOS" ;;
+    iphone)  echo "platform=iOS Simulator,name=iPhone 16 Pro" ;;
+    ipad)    echo "platform=iOS Simulator,name=iPad Pro 13-inch (M4)" ;;
+    appletv) echo "platform=tvOS Simulator,name=Apple TV 4K (3rd generation)" ;;
+    *)       echo "Unknown platform: $1" >&2; exit 1 ;;
+  esac
+}
+
+resolve_sim_name() {
+  case "$1" in
+    iphone)  echo "iPhone 16 Pro" ;;
+    ipad)    echo "iPad Pro 13-inch (M4)" ;;
+    appletv) echo "Apple TV 4K (3rd generation)" ;;
+  esac
+}
+
+DEST="$(resolve_destination "$PLATFORM")"
+
+# Build
+echo "==> Building for $PLATFORM..."
+set -o pipefail && xcodebuild build \
+  -workspace "$PROJECT_DIR/SugoiTV.xcworkspace" \
+  -scheme SugoiTV \
+  -destination "$DEST" \
+  2>&1 | xcbeautify
+
+# Extract build settings
+BUILD_SETTINGS=$(xcodebuild build \
+  -workspace "$PROJECT_DIR/SugoiTV.xcworkspace" \
+  -scheme SugoiTV \
+  -destination "$DEST" \
+  -showBuildSettings 2>/dev/null)
+
+BUILT_PRODUCTS_DIR=$(echo "$BUILD_SETTINGS" | grep '^\s*BUILT_PRODUCTS_DIR' | head -1 | awk -F' = ' '{print $2}')
+FULL_PRODUCT_NAME=$(echo "$BUILD_SETTINGS" | grep '^\s*FULL_PRODUCT_NAME' | head -1 | awk -F' = ' '{print $2}')
+BUNDLE_ID=$(echo "$BUILD_SETTINGS" | grep '^\s*PRODUCT_BUNDLE_IDENTIFIER' | head -1 | awk -F' = ' '{print $2}')
+APP_PATH="$BUILT_PRODUCTS_DIR/$FULL_PRODUCT_NAME"
+
+if [ "$PLATFORM" = "mac" ]; then
+  echo "==> Launching $APP_PATH"
+  open "$APP_PATH"
+  echo "$APP_PATH"
+else
+  SIM_NAME="$(resolve_sim_name "$PLATFORM")"
+
+  # Find simulator UDID
+  UDID=$(xcrun simctl list devices available -j | \
+    python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+for runtime, devices in data['devices'].items():
+    for d in devices:
+        if d['name'] == '$SIM_NAME' and d['isAvailable']:
+            print(d['udid'])
+            sys.exit(0)
+sys.exit(1)
+")
+
+  if [ -z "$UDID" ]; then
+    echo "Error: could not find available simulator '$SIM_NAME'" >&2
+    exit 1
+  fi
+
+  # Boot simulator if needed
+  STATE=$(xcrun simctl list devices -j | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+for runtime, devices in data['devices'].items():
+    for d in devices:
+        if d['udid'] == '$UDID':
+            print(d['state'])
+            sys.exit(0)
+")
+  if [ "$STATE" != "Booted" ]; then
+    echo "==> Booting simulator $SIM_NAME ($UDID)..."
+    xcrun simctl boot "$UDID"
+    open -a Simulator
+  fi
+
+  echo "==> Installing on simulator..."
+  xcrun simctl install "$UDID" "$APP_PATH"
+
+  echo "==> Launching on simulator..."
+  xcrun simctl launch "$UDID" "$BUNDLE_ID"
+
+  echo "$UDID"
+fi
