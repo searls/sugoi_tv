@@ -3,6 +3,9 @@ import SwiftUI
 
 @main
 struct SugoiTVApp: App {
+  #if os(macOS)
+  @NSApplicationDelegateAdaptor private var appDelegate: AppDelegate
+  #endif
   @State private var appState = AppState()
 
   var body: some Scene {

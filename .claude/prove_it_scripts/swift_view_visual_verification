@@ -1,0 +1,74 @@
+#!/usr/bin/env node
+'use strict'
+
+// Passive PreToolUse observer that tracks Swift View edits vs image reads.
+// When the agent edits View files N times without reading any screenshots,
+// blocks the next tool use as a reminder to visually verify.
+//
+// State: /tmp/prove_it_visual_<session_id> — a single integer (edit count).
+// Reset to 0 on image/video read or when the threshold fires.
+
+const fs = require('fs')
+const path = require('path')
+const os = require('os')
+
+const THRESHOLD = 30
+
+const IMAGE_EXTS = new Set([
+  '.png', '.jpg', '.jpeg', '.gif', '.webp', '.heic', '.heif',
+  '.mp4', '.mov', '.avi', '.mkv'
+])
+
+const VIEW_PATTERN = /(View[^/]*\.swift$|\/Views\/[^/]*\.swift$)/i
+
+// Read dispatch context from stdin (piped by prove_it)
+let ctx
+try {
+  ctx = JSON.parse(fs.readFileSync(0, 'utf8'))
+} catch {
+  process.exit(0)
+}
+
+const sessionId = ctx.session_id
+if (!sessionId) process.exit(0)
+
+const toolName = ctx.tool_name || ''
+const toolInput = ctx.tool_input || {}
+const filePath = toolInput.file_path || toolInput.filePath ||
+  toolInput.notebook_path || toolInput.path || ''
+if (!filePath) process.exit(0)
+
+const ext = path.extname(filePath).toLowerCase()
+const stateFile = path.join(os.tmpdir(), `prove_it_visual_${sessionId}`)
+
+// Read current count
+let count = 0
+try {
+  count = parseInt(fs.readFileSync(stateFile, 'utf8'), 10) || 0
+} catch {}
+
+// Image/video read → reset counter
+if (toolName === 'Read' && IMAGE_EXTS.has(ext)) {
+  fs.writeFileSync(stateFile, '0')
+  process.exit(0)
+}
+
+// Swift View edit → increment and maybe block
+const isEdit = toolName === 'Edit' || toolName === 'Write' ||
+  /XcodeWrite/.test(toolName)
+
+if (isEdit && VIEW_PATTERN.test(filePath)) {
+  count++
+  if (count >= THRESHOLD) {
+    fs.writeFileSync(stateFile, '0')
+    console.error(
+      `You've edited Swift View files ${count} times without reading any ` +
+      'screenshots or videos. Build the app, take screenshots of the ' +
+      'affected screens, and read them before continuing.'
+    )
+    process.exit(1)
+  }
+  fs.writeFileSync(stateFile, String(count))
+}
+
+process.exit(0)

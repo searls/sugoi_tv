@@ -30,6 +30,12 @@
           "when": {
             "linesWrittenSinceLastRun": 500
           }
+        },
+        {
+          "name": "swift-view-visual-tracker",
+          "type": "script",
+          "command": "node .claude/prove_it_scripts/swift_view_visual_verification",
+          "mtime": false
         }
       ]
     },
@@ -51,18 +57,6 @@
           "ruleFile": ".claude/rules/testing.md",
           "when": {
             "sourcesModifiedSinceLastRun": true
-          }
-        },
-        {
-          "name": "visual-verify",
-          "type": "agent",
-          "promptType": "string",
-          "prompt": "Check if any SwiftUI View files were modified in this session (look at git diff for files matching *View*.swift or in Views/ directories). If UI files were changed, check the conversation history for evidence that screenshots were taken and visually inspected by Claude directly (not just a subagent summary). If UI was changed but no screenshots were read by Claude, block and say: 'UI files were modified but not visually verified. Build the app, take screenshots, and read them yourself before stopping.'",
-          "model": "haiku",
-          "when": {
-            "variablesPresent": [
-              "session_diff"
-            ]
           }
         }
       ]
