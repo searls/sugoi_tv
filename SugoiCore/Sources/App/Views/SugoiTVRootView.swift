@@ -263,6 +263,19 @@ struct AuthenticatedContainer: View {
     NavigationSplitView(columnVisibility: $columnVisibility, preferredCompactColumn: $controller.preferredCompactColumn) {
       sidebarContent
         .navigationSplitViewColumnWidth(min: 220, ideal: 280, max: 360)
+        #if os(macOS)
+        .toolbar {
+          ToolbarItem(placement: .navigation) {
+            if controller.sidebarPath.last != nil {
+              Button {
+                withAnimation { controller.sidebarPath = [] }
+              } label: {
+                Label("Channels", systemImage: "chevron.backward")
+              }
+            }
+          }
+        }
+        #endif
     } detail: {
       ZStack(alignment: .topLeading) {
         PlayerView(playerManager: controller.playerManager)
@@ -350,20 +363,16 @@ struct AuthenticatedContainer: View {
 
   private var sidebarContent: some View {
     VStack(spacing: 0) {
+      #if os(macOS)
+      macOSSidebar
+      #else
       NavigationStack(path: $controller.sidebarPath) {
         channelListContent
           .navigationDestination(for: ChannelDTO.self) { channel in
-            ProgramListView(
-              viewModel: controller.programListViewModel(for: channel),
-              onPlayLive: { controller.playChannel(channel) },
-              onPlayVOD: { program in
-                controller.playVOD(program: program, channelName: channel.name)
-              }
-            )
+            programListView(for: channel)
           }
       }
 
-      #if !os(macOS)
       Divider()
       Button("Sign Out") {
         Task { await appState.logout() }
@@ -374,6 +383,25 @@ struct AuthenticatedContainer: View {
       #endif
     }
   }
+
+  // MARK: macOS sidebar workaround
+
+  #if os(macOS)
+  /// macOS 26.3 workaround: NavigationStack pushed destinations don't render
+  /// inside NavigationSplitView sidebar. Swap views manually based on sidebarPath.
+  @ViewBuilder
+  private var macOSSidebar: some View {
+    if let channel = controller.sidebarPath.last {
+      programListView(for: channel)
+        .transition(.push(from: .trailing))
+    } else {
+      channelListContent
+        .transition(.push(from: .leading))
+    }
+  }
+  #endif
+
+  // MARK: Shared sidebar content
 
   @ViewBuilder
   private var channelListContent: some View {
@@ -392,15 +420,7 @@ struct AuthenticatedContainer: View {
         ForEach(controller.channelListVM.filteredGroups, id: \.category) { group in
           Section(group.category) {
             ForEach(group.channels) { channel in
-              NavigationLink(value: channel) {
-                ChannelRow(
-                  channel: channel,
-                  thumbnailURL: StreamURLBuilder.thumbnailURL(
-                    channelListHost: controller.channelListVM.config.channelListHost,
-                    playpath: channel.playpath
-                  )
-                )
-              }
+              channelItem(for: channel)
             }
           }
         }
@@ -408,6 +428,39 @@ struct AuthenticatedContainer: View {
       .listStyle(.sidebar)
       .accessibilityIdentifier("channelList")
     }
+  }
+
+  @ViewBuilder
+  private func channelItem(for channel: ChannelDTO) -> some View {
+    let row = ChannelRow(
+      channel: channel,
+      thumbnailURL: StreamURLBuilder.thumbnailURL(
+        channelListHost: controller.channelListVM.config.channelListHost,
+        playpath: channel.playpath
+      )
+    )
+    #if os(macOS)
+    Button {
+      withAnimation { controller.sidebarPath = [channel] }
+    } label: {
+      row
+    }
+    .buttonStyle(.plain)
+    #else
+    NavigationLink(value: channel) {
+      row
+    }
+    #endif
+  }
+
+  private func programListView(for channel: ChannelDTO) -> some View {
+    ProgramListView(
+      viewModel: controller.programListViewModel(for: channel),
+      onPlayLive: { controller.playChannel(channel) },
+      onPlayVOD: { program in
+        controller.playVOD(program: program, channelName: channel.name)
+      }
+    )
   }
 
   #if os(macOS)
