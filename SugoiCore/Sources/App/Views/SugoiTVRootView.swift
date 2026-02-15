@@ -250,6 +250,7 @@ struct AuthenticatedContainer: View {
   @Environment(\.horizontalSizeClass) private var sizeClass
   #if os(macOS)
   @Environment(\.openSettings) private var openSettings
+  @State private var macNavPath: [ChannelDTO] = []
   #endif
 
   init(appState: AppState, session: AuthService.Session) {
@@ -364,14 +365,9 @@ struct AuthenticatedContainer: View {
   private var sidebarContent: some View {
     VStack(spacing: 0) {
       #if os(macOS)
-      macOSSidebar
+      sidebarNavigation
       #else
-      NavigationStack(path: $controller.sidebarPath) {
-        channelListContent
-          .navigationDestination(for: ChannelDTO.self) { channel in
-            programListView(for: channel)
-          }
-      }
+      sidebarNavigation
 
       Divider()
       Button("Sign Out") {
@@ -384,24 +380,49 @@ struct AuthenticatedContainer: View {
     }
   }
 
-  // MARK: macOS sidebar workaround
+  // MARK: Sidebar navigation
 
-  #if os(macOS)
-  /// macOS 26.3 workaround: NavigationStack pushed destinations don't render
-  /// inside NavigationSplitView sidebar. Swap views manually based on sidebarPath.
-  @ViewBuilder
-  private var macOSSidebar: some View {
-    if let channel = controller.sidebarPath.last {
-      programListView(for: channel)
-        .transition(.push(from: .trailing))
-    } else {
-      channelListContent
-        .transition(.push(from: .leading))
+  private var sidebarNavigation: some View {
+    NavigationStack(path: sidebarNavigationPath) {
+      #if os(macOS)
+      // macOS 26.3: NavigationStack in NavigationSplitView sidebar doesn't render
+      // pushed destinations. Swap root content instead of pushing.
+      // DELETE THIS #if os(macOS) block when Apple fixes the bug.
+      Group {
+        if let channel = controller.sidebarPath.last {
+          programListView(for: channel)
+            .transition(.push(from: .trailing))
+        } else {
+          channelListRoot
+            .transition(.push(from: .leading))
+        }
+      }
+      .onChange(of: macNavPath) { _, newPath in
+        guard let channel = newPath.last else { return }
+        macNavPath = []
+        withAnimation { controller.sidebarPath = [channel] }
+      }
+      #else
+      channelListRoot
+      #endif
     }
   }
-  #endif
 
-  // MARK: Shared sidebar content
+  private var sidebarNavigationPath: Binding<[ChannelDTO]> {
+    #if os(macOS)
+    $macNavPath
+    #else
+    $controller.sidebarPath
+    #endif
+  }
+
+  /// Channel list with NavigationLink drill-down to program guide — shared across all platforms.
+  private var channelListRoot: some View {
+    channelListContent
+      .navigationDestination(for: ChannelDTO.self) { channel in
+        programListView(for: channel)
+      }
+  }
 
   @ViewBuilder
   private var channelListContent: some View {
@@ -420,7 +441,15 @@ struct AuthenticatedContainer: View {
         ForEach(controller.channelListVM.filteredGroups, id: \.category) { group in
           Section(group.category) {
             ForEach(group.channels) { channel in
-              channelItem(for: channel)
+              NavigationLink(value: channel) {
+                ChannelRow(
+                  channel: channel,
+                  thumbnailURL: StreamURLBuilder.thumbnailURL(
+                    channelListHost: controller.channelListVM.config.channelListHost,
+                    playpath: channel.playpath
+                  )
+                )
+              }
             }
           }
         }
@@ -428,29 +457,6 @@ struct AuthenticatedContainer: View {
       .listStyle(.sidebar)
       .accessibilityIdentifier("channelList")
     }
-  }
-
-  @ViewBuilder
-  private func channelItem(for channel: ChannelDTO) -> some View {
-    let row = ChannelRow(
-      channel: channel,
-      thumbnailURL: StreamURLBuilder.thumbnailURL(
-        channelListHost: controller.channelListVM.config.channelListHost,
-        playpath: channel.playpath
-      )
-    )
-    #if os(macOS)
-    Button {
-      withAnimation { controller.sidebarPath = [channel] }
-    } label: {
-      row
-    }
-    .buttonStyle(.plain)
-    #else
-    NavigationLink(value: channel) {
-      row
-    }
-    #endif
   }
 
   private func programListView(for channel: ChannelDTO) -> some View {
