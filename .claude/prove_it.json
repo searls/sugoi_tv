@@ -24,17 +24,6 @@
           "command": "prove_it run_builtin config:lock"
         },
         {
-          "name": "ensure-tests",
-          "type": "agent",
-          "promptType": "reference",
-          "prompt": "review:test_investment",
-          "model": "haiku",
-          "ruleFile": ".claude/rules/testing.md",
-          "when": {
-            "linesWrittenSinceLastRun": 500
-          }
-        },
-        {
           "name": "swift-view-visual-tracker",
           "type": "script",
           "command": "node .claude/prove_it_scripts/swift_view_visual_verification",

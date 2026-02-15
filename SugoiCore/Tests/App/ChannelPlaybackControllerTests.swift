@@ -491,3 +491,102 @@ struct ChannelPlaybackControllerSidebarPathTests {
     #expect(vm1 === vm2)
   }
 }
+
+// MARK: - Permission error detection
+
+@Suite("String.looksLikePermissionError")
+struct LooksLikePermissionErrorTests {
+  @Test("Detects 'permission' keyword")
+  func detectsPermission() {
+    #expect("Access permission denied".looksLikePermissionError)
+  }
+
+  @Test("Detects 'authorized' keyword")
+  func detectsAuthorized() {
+    #expect("Not authorized to access resource".looksLikePermissionError)
+  }
+
+  @Test("Detects 'forbidden' keyword")
+  func detectsForbidden() {
+    #expect("403 Forbidden".looksLikePermissionError)
+  }
+
+  @Test("Detects '403' status code")
+  func detects403() {
+    #expect("HTTP error 403".looksLikePermissionError)
+  }
+
+  @Test("Case insensitive matching")
+  func caseInsensitive() {
+    #expect("PERMISSION DENIED".looksLikePermissionError)
+    #expect("Forbidden".looksLikePermissionError)
+  }
+
+  @Test("Non-permission errors return false")
+  func nonPermissionErrors() {
+    #expect(!"Network timeout".looksLikePermissionError)
+    #expect(!"File not found".looksLikePermissionError)
+    #expect(!"500 Internal Server Error".looksLikePermissionError)
+  }
+}
+
+// MARK: - Proxy URL fallback
+
+@Suite("ChannelPlaybackController.playChannel proxy fallback")
+@MainActor
+struct PlayChannelProxyFallbackTests {
+  nonisolated static var testLoginJSON: String {
+    ChannelPlaybackControllerAutoSelectTests.testLoginJSON
+  }
+
+  nonisolated static var channelsJSON: String {
+    ChannelPlaybackControllerAutoSelectTests.channelsJSON
+  }
+
+  private func makeController() throws -> ChannelPlaybackController {
+    let mock = MockHTTPSession()
+    mock.requestHandler = { _ in
+      let response = HTTPURLResponse(
+        url: URL(string: "http://test.com")!, statusCode: 200, httpVersion: nil, headerFields: nil
+      )!
+      return (response, Data(Self.channelsJSON.utf8))
+    }
+    let client = APIClient(session: mock.session)
+    let auth = AuthService(keychain: MockKeychainService(), apiClient: client)
+    let channels = ChannelService(apiClient: client)
+    let programGuide = ProgramGuideService(apiClient: client)
+    let appState = AppState(apiClient: client, authService: auth, channelService: channels, programGuideService: programGuide)
+
+    let loginResponse = try JSONDecoder().decode(LoginResponse.self, from: Data(Self.testLoginJSON.utf8))
+    let config = try loginResponse.parseProductConfig()
+    let session = AuthService.Session(from: loginResponse, config: config)
+
+    let defaults = UserDefaults(suiteName: "test.proxy.\(UUID().uuidString)")!
+    return ChannelPlaybackController(appState: appState, session: session, defaults: defaults)
+  }
+
+  @Test("playChannel uses direct URL when proxy is not ready")
+  func playChannelDirectFallback() throws {
+    let controller = try makeController()
+    let channel = ChannelDTO(
+      id: "CH1", uid: nil, name: "NHK総合", description: nil, tags: nil,
+      no: 1, timeshift: nil, timeshiftLen: nil, epgKeepDays: nil, state: nil,
+      running: 1, playpath: "/query/s/nhk", liveType: nil
+    )
+
+    // Proxy not started → falls back to direct URL
+    #expect(controller.refererProxy.isReady == false)
+    controller.playChannel(channel)
+    #expect(controller.playerManager.state != .idle)
+  }
+
+  @Test("playVOD uses direct URL when proxy is not ready")
+  func playVODDirectFallback() throws {
+    let controller = try makeController()
+    let program = ProgramDTO(time: 1000, title: "Past Show", path: "/query/past_show")
+
+    #expect(controller.refererProxy.isReady == false)
+    controller.playVOD(program: program, channelName: "NHK")
+    #expect(controller.playerManager.state != .idle)
+  }
+}

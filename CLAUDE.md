@@ -28,9 +28,10 @@ All backend API details, authentication flows, data models, and streaming
 mechanics are documented in [YOITV_API.md](./YOITV_API.md). That file is the
 source of truth for how to interact with the YoiTV service.
 
-## Key Design Decisions
+## YoiTV API documentation
 
 ### Authentication
+
 - Device ID: generate a random 32-character hex string on first launch, persist
   in Keychain, reuse forever
 - Store `access_token`, `refresh_token`, `cid`, `product_config`, and the
@@ -70,58 +71,11 @@ domains:
 - Participate in single-play enforcement by polling `/single.sjs` during
   playback. Pass `ua=ios`, `ua=macos`, or `ua=tvos` as appropriate
 
-### EPG (Electronic Program Guide)
+### Program Guide
 - Timestamps are Unix seconds. Use `Date(timeIntervalSince1970:)` and format in
   Asia/Tokyo timezone for display
 - Programs with a non-empty `path` field support catch-up VOD playback
 - Programs with an empty `path` are live-only (no recording available)
-
-## Application Structure
-
-```
-SugoiTV/
-  App/
-    SugoiTVApp.swift              # Entry point, scene setup
-  Models/
-    Channel.swift                 # Channel, Category
-    EPGEntry.swift                # Program guide entries
-    PlayRecord.swift              # Watch history / resume position
-    License.swift                 # Auth tokens, product config
-  Services/
-    AuthService.swift             # Login, refresh, logout, device ID
-    ChannelService.swift          # Channel list, EPG fetching
-    FavoritesService.swift        # Cloud favorites sync
-    StreamURLBuilder.swift        # HLS URL construction + referer
-    SinglePlayService.swift       # Concurrent playback enforcement
-  Views/
-    LoginView.swift
-    ChannelListView.swift         # Sidebar/grid of channels by category
-    EPGView.swift                 # Program schedule for selected channel
-    PlayerView.swift              # AVPlayer wrapper with transport controls
-    FavoritesView.swift
-    SettingsView.swift
-  Platform/
-    macOS/                        # macOS-specific adaptations
-    tvOS/                         # tvOS focus-based navigation, top shelf
-```
-
-## Platform Considerations
-
-### iOS
-- Channel list as primary tab, player presents modally or inline
-- Support Picture-in-Picture
-- Background audio entitlement for audio-only listening
-
-### macOS
-- Sidebar navigation with channel categories
-- Resizable window with inline player
-- Menu bar integration for quick channel switching
-
-### tvOS
-- Focus-based navigation for channel grid and EPG
-- Top Shelf extension showing currently-playing channels with thumbnails
-- Full-screen player as primary experience
-- Siri Remote swipe for channel surfing
 
 ## Credentials
 
@@ -206,3 +160,8 @@ Prioritize unit tests — they're fast and reliable. Views are thin wrappers.
 - NEVER say "ready to push when you are" - YOU must push
 - If push fails, resolve and retry until it succeeds
 
+## Troubleshooting
+
+Whenever you're having trouble with a SwiftUI view, consider making a #Preview that you can interact with easily using xcode MCP's RenderPreview tool.
+
+If that proves non-trivial, open ~/code/searls/crap/Crap.xcodeproj which is just a sandbox/sample/empty app that you can play around with to get a clean slate!

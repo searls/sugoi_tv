@@ -13,3 +13,6 @@ xcuserdata/
 
 # Nested prove_it local configs (e.g. SugoiCore/.claude/)
 **/.claude/prove_it.local.json
+
+# Raw API fixture captures (ephemeral; curated subset lives in PreviewContent)
+/fixtures/

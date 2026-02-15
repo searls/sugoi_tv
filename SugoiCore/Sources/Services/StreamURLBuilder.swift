@@ -10,6 +10,9 @@ public enum StreamURLBuilder {
     playpath: String,
     accessToken: String
   ) -> URL? {
+    #if DEBUG
+    if let preview = previewStreamURL { return preview }
+    #endif
     let encoded = percentEncodeToken(accessToken)
     return URL(string: "\(liveHost)\(playpath).M3U8?type=live&__cross_domain_user=\(encoded)")
   }
@@ -21,9 +24,20 @@ public enum StreamURLBuilder {
     path: String,
     accessToken: String
   ) -> URL? {
+    #if DEBUG
+    if let preview = previewStreamURL { return preview }
+    #endif
     let encoded = percentEncodeToken(accessToken)
     return URL(string: "\(recordHost)\(path).m3u8?type=vod&__cross_domain_user=\(encoded)")
   }
+
+  #if DEBUG
+  /// In preview mode, all stream URLs resolve to a bundled clip.
+  private static var previewStreamURL: URL? {
+    guard ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1" else { return nil }
+    return Bundle.module.url(forResource: "preview-stream", withExtension: "mp4", subdirectory: "PreviewContent")
+  }
+  #endif
 
   /// Favorite VOD playback URL
   /// Pattern: `{vodHost}/query/{vid}.m3u8?type=vod&__cross_domain_user={token}`

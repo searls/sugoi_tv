@@ -1,0 +1,168 @@
+#!/usr/bin/env bash
+# Captures real data from the YoiTV API for use in SwiftUI previews.
+# Requires: curl, jq, YOITV_USER and YOITV_PASS environment variables
+set -euo pipefail
+
+# -- Prerequisites --
+for cmd in curl jq; do
+  command -v "$cmd" >/dev/null 2>&1 || { echo "Error: $cmd is required but not installed." >&2; exit 1; }
+done
+
+if [[ -z "${YOITV_USER:-}" || -z "${YOITV_PASS:-}" ]]; then
+  echo "Error: YOITV_USER and YOITV_PASS environment variables must be set." >&2
+  exit 1
+fi
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+FIXTURES="$ROOT/fixtures"
+PREVIEW_FIXTURES="$ROOT/SugoiCore/Sources/PreviewContent/fixtures"
+rm -rf "$FIXTURES"
+mkdir -p "$FIXTURES/thumbnails" "$FIXTURES/streams"
+
+DEVICE_ID="AABBCCDD11223344AABBCCDD11223344"
+
+# -- Step 1: Login --
+echo "Logging in..."
+LOGIN_RESPONSE=$(curl -sS "https://crm.yoitv.com/logon.sjs?from_app=1&cid=${YOITV_USER}&password=${YOITV_PASS}&app_id=&device_id=${DEVICE_ID}")
+
+CODE=$(echo "$LOGIN_RESPONSE" | jq -r '.code')
+if [[ "$CODE" != "OK" ]]; then
+  echo "Login failed: $CODE" >&2
+  exit 1
+fi
+
+ACCESS_TOKEN=$(echo "$LOGIN_RESPONSE" | jq -r '.access_token')
+PRODUCT_CONFIG=$(echo "$LOGIN_RESPONSE" | jq -r '.product_config' | jq .)
+
+VMS_HOST=$(echo "$PRODUCT_CONFIG" | jq -r '.vms_host')
+VMS_UID=$(echo "$PRODUCT_CONFIG" | jq -r '.vms_uid')
+VMS_LIVE_CID=$(echo "$PRODUCT_CONFIG" | jq -r '.vms_live_cid')
+VMS_REFERER=$(echo "$PRODUCT_CONFIG" | jq -r '.vms_referer')
+
+CHANNEL_LIST_HOST=$(echo "$PRODUCT_CONFIG" | jq -r '.vms_channel_list_host // .vms_host')
+
+echo "  VMS Host: $VMS_HOST"
+echo "  Channel List Host: $CHANNEL_LIST_HOST"
+
+# -- Step 2: Fetch channel list --
+echo "Fetching channel list..."
+CHANNEL_URL="${CHANNEL_LIST_HOST}/api?action=listLives&cid=${VMS_LIVE_CID}&uid=${VMS_UID}&details=0&page_size=200&sort=no%20asc&sort=created_time%20desc&type=video&no_epg=1&referer=${VMS_REFERER}"
+curl -sS --compressed "$CHANNEL_URL" | jq . > "$FIXTURES/channels.json"
+
+CHANNEL_COUNT=$(jq '.result | length' "$FIXTURES/channels.json")
+echo "  Captured $CHANNEL_COUNT channels"
+
+# -- Step 3: Download thumbnails --
+echo "Downloading thumbnails..."
+THUMB_COUNT=0
+for ID in $(jq -r '.result[].id' "$FIXTURES/channels.json"); do
+  PLAYPATH=$(jq -r --arg id "$ID" '.result[] | select(.id == $id) | .playpath' "$FIXTURES/channels.json")
+  THUMB_URL="${CHANNEL_LIST_HOST}${PLAYPATH}.jpg?type=live&thumbnail=thumbnail_small.jpg"
+  if curl -sS -L -f --compressed -o "$FIXTURES/thumbnails/${ID}.jpg" "$THUMB_URL" 2>/dev/null; then
+    THUMB_COUNT=$((THUMB_COUNT + 1))
+  fi
+done
+echo "  Downloaded $THUMB_COUNT thumbnails"
+
+# -- Step 4: Find NHK-G and Nittere channel IDs --
+NHK_ID=$(jq -r '.result[] | select(.name | test("NHK総合")) | .id' "$FIXTURES/channels.json" | head -1)
+NITTERE_ID=$(jq -r '.result[] | select(.name | test("日本テレビ|日テレ")) | .id' "$FIXTURES/channels.json" | head -1)
+
+echo "  NHK-G ID: ${NHK_ID:-not found}"
+echo "  Nittere ID: ${NITTERE_ID:-not found}"
+
+# -- Step 5: Fetch EPG for both channels --
+fetch_epg() {
+  local channel_id="$1"
+  local output_file="$2"
+  local label="$3"
+
+  if [[ -z "$channel_id" ]]; then
+    echo "  Skipping $label (channel not found)"
+    return
+  fi
+
+  echo "  Fetching EPG for $label..."
+  EPG_URL="${CHANNEL_LIST_HOST}/api?action=listLives&cid=${VMS_LIVE_CID}&uid=${VMS_UID}&vid=${channel_id}&details=0&page_size=200&sort=no%20asc&sort=created_time%20desc&type=video&no_epg=0&epg_days=30&referer=${VMS_REFERER}"
+  curl -sS --compressed "$EPG_URL" | jq . > "$output_file"
+
+  local PROG_COUNT
+  PROG_COUNT=$(jq -r '.result[0].record_epg // "[]"' "$output_file" | jq 'length')
+  echo "    $PROG_COUNT programs"
+}
+
+fetch_epg "$NHK_ID" "$FIXTURES/epg-nhk-g.json" "NHK-G"
+fetch_epg "$NITTERE_ID" "$FIXTURES/epg-nittere.json" "Nittere"
+
+# -- Step 6: Record stream clips (optional, requires ffmpeg) --
+if command -v ffmpeg >/dev/null 2>&1; then
+  LIVE_HOST=$(echo "$PRODUCT_CONFIG" | jq -r '.vms_live_host // .vms_host')
+  RECORD_HOST=$(echo "$PRODUCT_CONFIG" | jq -r '.vms_record_host // .vms_vod_host // .vms_host')
+  ENCODED_TOKEN=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$ACCESS_TOKEN', safe=''))")
+
+  record_stream() {
+    local url="$1"
+    local output="$2"
+    local label="$3"
+    echo "  Recording $label (10s)..."
+    ffmpeg -y -hide_banner -loglevel error \
+      -headers "Referer: ${VMS_REFERER}\r\n" \
+      -i "$url" \
+      -t 10 -c copy "$output" 2>/dev/null || echo "    Warning: failed to record $label"
+  }
+
+  # Live streams
+  if [[ -n "$NHK_ID" ]]; then
+    NHK_PLAYPATH=$(jq -r --arg id "$NHK_ID" '.result[] | select(.id == $id) | .playpath' "$FIXTURES/channels.json")
+    record_stream "${LIVE_HOST}${NHK_PLAYPATH}.M3U8?type=live&__cross_domain_user=${ENCODED_TOKEN}" "$FIXTURES/streams/nhk-g-live.mp4" "NHK-G live"
+  fi
+  if [[ -n "$NITTERE_ID" ]]; then
+    NITTERE_PLAYPATH=$(jq -r --arg id "$NITTERE_ID" '.result[] | select(.id == $id) | .playpath' "$FIXTURES/channels.json")
+    record_stream "${LIVE_HOST}${NITTERE_PLAYPATH}.M3U8?type=live&__cross_domain_user=${ENCODED_TOKEN}" "$FIXTURES/streams/nittere-live.mp4" "Nittere live"
+  fi
+
+  # VOD streams (2 most recent per channel)
+  record_vod_for_channel() {
+    local epg_file="$1"
+    local prefix="$2"
+    local label="$3"
+
+    if [[ ! -f "$epg_file" ]]; then return; fi
+
+    local paths
+    paths=$(jq -r '.result[0].record_epg // "[]"' "$epg_file" | jq -r '[.[] | select(.path != "")] | reverse | .[0:2] | .[].path')
+    local i=1
+    for path in $paths; do
+      record_stream "${RECORD_HOST}${path}.m3u8?type=vod&__cross_domain_user=${ENCODED_TOKEN}" "$FIXTURES/streams/${prefix}-vod-${i}.mp4" "$label VOD $i"
+      i=$((i + 1))
+    done
+  }
+
+  record_vod_for_channel "$FIXTURES/epg-nhk-g.json" "nhk-g" "NHK-G"
+  record_vod_for_channel "$FIXTURES/epg-nittere.json" "nittere" "Nittere"
+else
+  echo "  Skipping stream recording (ffmpeg not installed)"
+fi
+
+# -- Step 7: Copy JSON + thumbnails to PreviewContent --
+echo "Copying fixtures to PreviewContent..."
+rm -rf "$PREVIEW_FIXTURES"
+mkdir -p "$PREVIEW_FIXTURES/thumbnails"
+cp "$FIXTURES/channels.json" "$PREVIEW_FIXTURES/"
+[[ -f "$FIXTURES/epg-nhk-g.json" ]] && cp "$FIXTURES/epg-nhk-g.json" "$PREVIEW_FIXTURES/"
+[[ -f "$FIXTURES/epg-nittere.json" ]] && cp "$FIXTURES/epg-nittere.json" "$PREVIEW_FIXTURES/"
+cp "$FIXTURES/thumbnails/"*.jpg "$PREVIEW_FIXTURES/thumbnails/" 2>/dev/null || true
+
+# -- Summary --
+echo ""
+echo "=== Capture complete ==="
+echo "Raw fixtures:    $FIXTURES/"
+ls -lh "$FIXTURES/channels.json" "$FIXTURES/epg-nhk-g.json" "$FIXTURES/epg-nittere.json" 2>/dev/null || true
+echo "Thumbnails:      $(ls "$FIXTURES/thumbnails/"*.jpg 2>/dev/null | wc -l | tr -d ' ') images"
+echo "Streams:         $(ls "$FIXTURES/streams/"*.mp4 2>/dev/null | wc -l | tr -d ' ') clips"
+echo "Preview content: $PREVIEW_FIXTURES/"
+echo ""
+echo "NHK-G channel ID:   $NHK_ID"
+echo "Nittere channel ID: $NITTERE_ID"
+echo ""
+echo "Next: add these IDs to FixtureAPIClient's channel-to-fixture mapping."

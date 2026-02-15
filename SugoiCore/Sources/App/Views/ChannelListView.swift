@@ -112,17 +112,52 @@ struct ChannelRow: View {
   let channel: ChannelDTO
   let thumbnailURL: URL?
 
+  @ViewBuilder
+  private var thumbnail: some View {
+    #if DEBUG
+    if ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1",
+       let image = Self.bundleThumbnail(for: channel.id) {
+      image.resizable().scaledToFill()
+    } else {
+      networkThumbnail
+    }
+    #else
+    networkThumbnail
+    #endif
+  }
+
+  private var networkThumbnail: some View {
+    AsyncImage(url: thumbnailURL) { phase in
+      switch phase {
+      case .success(let image):
+        image.resizable().scaledToFill()
+      default:
+        RoundedRectangle(cornerRadius: 6)
+          .fill(.quaternary)
+      }
+    }
+  }
+
+  #if DEBUG
+  private static func bundleThumbnail(for channelID: String) -> Image? {
+    guard let url = Bundle.module.url(
+      forResource: channelID, withExtension: "jpg",
+      subdirectory: "PreviewContent/fixtures/thumbnails"
+    ),
+    let data = try? Data(contentsOf: url) else { return nil }
+    #if os(macOS)
+    guard let img = NSImage(data: data) else { return nil }
+    return Image(nsImage: img)
+    #else
+    guard let img = UIImage(data: data) else { return nil }
+    return Image(uiImage: img)
+    #endif
+  }
+  #endif
+
   var body: some View {
     HStack(spacing: 12) {
-      AsyncImage(url: thumbnailURL) { phase in
-        switch phase {
-        case .success(let image):
-          image.resizable().scaledToFill()
-        default:
-          RoundedRectangle(cornerRadius: 6)
-            .fill(.quaternary)
-        }
-      }
+      thumbnail
       .frame(width: 60, height: 34)
       .clipShape(RoundedRectangle(cornerRadius: 6))
       .overlay {
