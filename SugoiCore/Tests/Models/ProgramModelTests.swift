@@ -3,16 +3,16 @@ import Testing
 
 @testable import SugoiCore
 
-@Suite("EPGEntry model")
-struct EPGEntryModelTests {
-  @Test("Initializes from EPGEntryDTO")
+@Suite("Program model")
+struct ProgramModelTests {
+  @Test("Initializes from ProgramDTO")
   func initFromDTO() {
-    let dto = EPGEntryDTO(
+    let dto = ProgramDTO(
       time: 1768338000,
       title: "NHKニュース おはよう日本",
       path: "/query/wtkmHz1XU-dOl-so_i2LJlsegL7gV3_laXirRbM5SSM="
     )
-    let entry = EPGEntry(from: dto, channelID: "CH1")
+    let entry = Program(from: dto, channelID: "CH1")
 
     #expect(entry.channelID == "CH1")
     #expect(entry.title == "NHKニュース おはよう日本")
@@ -23,7 +23,7 @@ struct EPGEntryModelTests {
 
   @Test("hasVOD is false when path is empty")
   func noVOD() {
-    let entry = EPGEntry()
+    let entry = Program()
     entry.path = ""
     #expect(entry.hasVOD == false)
 
@@ -34,8 +34,8 @@ struct EPGEntryModelTests {
   @Test("Formats time in JST")
   func jstFormatting() {
     // 2025-01-13 06:00:00 UTC = 2025-01-13 15:00:00 JST
-    let dto = EPGEntryDTO(time: 1736748000, title: "Test", path: "")
-    let entry = EPGEntry(from: dto, channelID: "CH1")
+    let dto = ProgramDTO(time: 1736748000, title: "Test", path: "")
+    let entry = Program(from: dto, channelID: "CH1")
     #expect(entry.formattedTime == "15:00")
   }
 }

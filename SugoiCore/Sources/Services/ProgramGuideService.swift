@@ -1,41 +1,41 @@
 import Foundation
 import SwiftData
 
-/// Fetches and parses EPG (Electronic Program Guide) data per channel
-public actor EPGService {
+/// Fetches and parses program guide data per channel
+public actor ProgramGuideService {
   private let apiClient: any APIClientProtocol
 
   public init(apiClient: any APIClientProtocol) {
     self.apiClient = apiClient
   }
 
-  /// Fetch EPG entries for a specific channel
-  public func fetchEPG(
+  /// Fetch program entries for a specific channel
+  public func fetchPrograms(
     config: ProductConfig,
     channelID: String
-  ) async throws -> [EPGEntryDTO] {
+  ) async throws -> [ProgramDTO] {
     let url = YoiTVEndpoints.epgURL(config: config, channelID: channelID)
-    let response: EPGChannelResponse = try await apiClient.get(url: url)
+    let response: ChannelProgramsResponse = try await apiClient.get(url: url)
     guard response.code == "OK" else {
-      throw EPGServiceError.fetchFailed(code: response.code)
+      throw ProgramGuideError.fetchFailed(code: response.code)
     }
     guard let channelData = response.result.first else {
-      throw EPGServiceError.channelNotFound(channelID)
+      throw ProgramGuideError.channelNotFound(channelID)
     }
-    return try channelData.parseEPGEntries()
+    return try channelData.parsePrograms()
   }
 
-  /// Fetch EPG and sync to SwiftData
+  /// Fetch programs and sync to SwiftData
   @MainActor
-  public func syncEPG(
+  public func syncPrograms(
     config: ProductConfig,
     channelID: String,
     modelContext: ModelContext
-  ) async throws -> [EPGEntry] {
-    let dtos = try await fetchEPG(config: config, channelID: channelID)
+  ) async throws -> [Program] {
+    let dtos = try await fetchPrograms(config: config, channelID: channelID)
 
-    // Delete existing EPG entries for this channel
-    let descriptor = FetchDescriptor<EPGEntry>(
+    // Delete existing program entries for this channel
+    let descriptor = FetchDescriptor<Program>(
       predicate: #Predicate { $0.channelID == channelID }
     )
     let existing = try modelContext.fetch(descriptor)
@@ -44,9 +44,9 @@ public actor EPGService {
     }
 
     // Insert fresh entries
-    var result: [EPGEntry] = []
+    var result: [Program] = []
     for dto in dtos {
-      let entry = EPGEntry(from: dto, channelID: channelID)
+      let entry = Program(from: dto, channelID: channelID)
       modelContext.insert(entry)
       result.append(entry)
     }
@@ -55,11 +55,11 @@ public actor EPGService {
     return result.sorted { $0.startTime < $1.startTime }
   }
 
-  /// Find the currently-airing program from a list of EPG entries
+  /// Find the currently-airing program from a list of program entries
   public static func currentProgram(
-    in entries: [EPGEntryDTO],
+    in entries: [ProgramDTO],
     at date: Date = Date()
-  ) -> EPGEntryDTO? {
+  ) -> ProgramDTO? {
     let timestamp = Int(date.timeIntervalSince1970)
     // Find the last entry whose start time is <= now
     return entries.last { $0.time <= timestamp }
@@ -67,25 +67,25 @@ public actor EPGService {
 
   /// Find upcoming programs (starting after now)
   public static func upcomingPrograms(
-    in entries: [EPGEntryDTO],
+    in entries: [ProgramDTO],
     after date: Date = Date(),
     limit: Int = 10
-  ) -> [EPGEntryDTO] {
+  ) -> [ProgramDTO] {
     let timestamp = Int(date.timeIntervalSince1970)
     return Array(entries.filter { $0.time > timestamp }.prefix(limit))
   }
 
   /// Find past programs with VOD available
   public static func vodAvailable(
-    in entries: [EPGEntryDTO],
+    in entries: [ProgramDTO],
     before date: Date = Date()
-  ) -> [EPGEntryDTO] {
+  ) -> [ProgramDTO] {
     let timestamp = Int(date.timeIntervalSince1970)
     return entries.filter { $0.time < timestamp && $0.hasVOD }
   }
 }
 
-public enum EPGServiceError: Error, Sendable {
+public enum ProgramGuideError: Error, Sendable {
   case fetchFailed(code: String)
   case channelNotFound(String)
 }

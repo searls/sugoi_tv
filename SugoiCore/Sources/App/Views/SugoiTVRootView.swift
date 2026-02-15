@@ -106,7 +106,7 @@ private struct ContainerPreview: View {
       apiClient: APIClient(),
       authService: AuthService(keychain: keychain, apiClient: mock),
       channelService: ChannelService(apiClient: mock),
-      epgService: EPGService(apiClient: mock)
+      programGuideService: ProgramGuideService(apiClient: mock)
     ))
   }
 
@@ -149,6 +149,13 @@ final class ChannelPlaybackController {
   var selectedChannel: ChannelDTO?
   @ObservationIgnored @AppStorage("lastChannelId") var lastChannelId: String = ""
 
+  /// Sidebar drill-down path: empty = channel list, [channel] = program list for that channel.
+  var sidebarPath: [ChannelDTO] = []
+
+  /// Stable ViewModel for the currently-drilled-into channel's program list.
+  /// Created once per channel navigation, persists across SwiftUI re-renders.
+  var programListVM: ProgramListViewModel?
+
   var session: AuthService.Session
   /// One-shot guard: allows a single reauth attempt per stream load.
   /// Reset to false in playChannel(), set to true after attempting reauth.
@@ -163,8 +170,11 @@ final class ChannelPlaybackController {
   /// reach the VMS server without needing custom HTTP headers.
   let refererProxy: RefererProxy
 
+  private let programGuideService: ProgramGuideService
+
   init(appState: AppState, session: AuthService.Session, defaults: UserDefaults = .standard) {
     self.session = session
+    self.programGuideService = appState.programGuideService
     self.channelListVM = ChannelListViewModel(
       channelService: appState.channelService,
       config: session.productConfig,
@@ -194,16 +204,22 @@ final class ChannelPlaybackController {
 
   /// Pick a channel from whatever is currently in channelGroups.
   /// Prefers the last-played channel, then first live, then first overall.
+  /// Also pushes into sidebarPath so the program list is visible.
   private func autoSelectChannel() {
     let allChannels = channelListVM.channelGroups.flatMap(\.channels)
     guard !allChannels.isEmpty else { return }
+    let channel: ChannelDTO?
     if !lastChannelId.isEmpty,
-       let channel = allChannels.first(where: { $0.id == lastChannelId }) {
-      selectedChannel = channel
+       let match = allChannels.first(where: { $0.id == lastChannelId }) {
+      channel = match
     } else if let live = allChannels.first(where: { $0.running == 1 }) {
-      selectedChannel = live
-    } else if let first = allChannels.first {
-      selectedChannel = first
+      channel = live
+    } else {
+      channel = allChannels.first
+    }
+    if let channel {
+      selectedChannel = channel
+      sidebarPath = [channel]
     }
   }
 
@@ -234,6 +250,40 @@ final class ChannelPlaybackController {
     }
     playerManager.setNowPlayingInfo(title: channel.name, isLiveStream: true)
   }
+
+  /// Return the cached ProgramListViewModel, or create a new one for the given channel.
+  func programListViewModel(for channel: ChannelDTO) -> ProgramListViewModel {
+    if let existing = programListVM, existing.channelID == channel.id {
+      return existing
+    }
+    let vm = ProgramListViewModel(
+      programGuideService: programGuideService,
+      config: session.productConfig,
+      channelID: channel.id,
+      channelName: channel.name
+    )
+    programListVM = vm
+    return vm
+  }
+
+  func playVOD(program: ProgramDTO, channelName: String) {
+    guard program.hasVOD else { return }
+    hasAttemptedReauth = false
+    preferredCompactColumn = .detail
+    guard let url = StreamURLBuilder.vodStreamURL(
+      recordHost: session.productConfig.recordHost,
+      path: program.path,
+      accessToken: session.accessToken
+    ) else { return }
+
+    if let proxiedURL = refererProxy.proxiedURL(for: url) {
+      playerManager.loadVODStream(url: proxiedURL, referer: "")
+    } else {
+      let referer = session.productConfig.vmsReferer
+      playerManager.loadVODStream(url: url, referer: referer)
+    }
+    playerManager.setNowPlayingInfo(title: "\(channelName) - \(program.title)", isLiveStream: false)
+  }
 }
 
 // MARK: - Sidebar persistence
@@ -258,7 +308,7 @@ public enum SidebarPersistence {
 
 // MARK: - Unified authenticated container
 
-/// NavigationSplitView layout for all platforms: sidebar with channel list, detail with player.
+/// NavigationSplitView layout for all platforms: sidebar with channel list + program drill-down, detail with player.
 /// On Mac and iPad, shows sidebar + detail side-by-side. On iPhone, collapses to push/pop stack.
 private struct AuthenticatedContainer: View {
   let appState: AppState
@@ -267,6 +317,7 @@ private struct AuthenticatedContainer: View {
   @AppStorage("sidebarVisible") private var sidebarVisible = true
   @AppStorage("lastActiveTimestamp") private var lastActiveTimestamp: Double = 0
   @Environment(\.scenePhase) private var scenePhase
+  @Environment(\.horizontalSizeClass) private var sizeClass
   #if os(macOS)
   @Environment(\.openSettings) private var openSettings
   #endif
@@ -326,8 +377,22 @@ private struct AuthenticatedContainer: View {
         controller.session = newSession
       }
     }
-    .onChange(of: controller.selectedChannel) { _, channel in
-      if let channel { controller.playChannel(channel) }
+    .onChange(of: controller.sidebarPath) { oldPath, newPath in
+      if let channel = newPath.last, oldPath.last?.id != channel.id {
+        // Drilled into a new channel
+        controller.selectedChannel = channel
+        controller.lastChannelId = channel.id
+        if sizeClass != .compact {
+          // Mac/iPad: auto-play live when drilling into channel
+          controller.playChannel(channel)
+        }
+      } else if newPath.isEmpty && !oldPath.isEmpty {
+        // Navigated back to channel list
+        controller.programListVM = nil
+        if sizeClass == .compact {
+          controller.playerManager.stop()
+        }
+      }
     }
     .onChange(of: controller.playerManager.state) { _, newState in
       if case .failed(let message) = newState,
@@ -339,7 +404,7 @@ private struct AuthenticatedContainer: View {
           let newSession = await appState.reauthenticate()
           if let newSession {
             controller.session = newSession
-            if let channel = controller.selectedChannel {
+            if let channel = controller.sidebarPath.last {
               controller.playChannel(channel)
             }
           }
@@ -356,7 +421,27 @@ private struct AuthenticatedContainer: View {
   private var sidebarContent: some View {
     VStack(spacing: 0) {
       Group {
-        if controller.channelListVM.isLoading && controller.channelListVM.channelGroups.isEmpty {
+        if let channel = controller.sidebarPath.last {
+          // Drilled into a channel's program list
+          ProgramListView(
+            viewModel: controller.programListViewModel(for: channel),
+            onPlayLive: {
+              controller.playChannel(channel)
+            },
+            onPlayVOD: { program in
+              controller.playVOD(program: program, channelName: channel.name)
+            }
+          )
+          .toolbar {
+            ToolbarItem(placement: .navigation) {
+              Button {
+                controller.sidebarPath = []
+              } label: {
+                Label("Channels", systemImage: "chevron.backward")
+              }
+            }
+          }
+        } else if controller.channelListVM.isLoading && controller.channelListVM.channelGroups.isEmpty {
           ProgressView("Loading channels...")
         } else if let error = controller.channelListVM.errorMessage, controller.channelListVM.channelGroups.isEmpty {
           ContentUnavailableView {
@@ -367,18 +452,22 @@ private struct AuthenticatedContainer: View {
             Button("Retry") { Task { await controller.channelListVM.loadChannels() } }
           }
         } else {
-          List(selection: $controller.selectedChannel) {
+          List {
             ForEach(controller.channelListVM.filteredGroups, id: \.category) { group in
               Section(group.category) {
                 ForEach(group.channels) { channel in
-                  ChannelRow(
-                    channel: channel,
-                    thumbnailURL: StreamURLBuilder.thumbnailURL(
-                      channelListHost: controller.channelListVM.config.channelListHost,
-                      playpath: channel.playpath
+                  Button {
+                    controller.sidebarPath = [channel]
+                  } label: {
+                    ChannelRow(
+                      channel: channel,
+                      thumbnailURL: StreamURLBuilder.thumbnailURL(
+                        channelListHost: controller.channelListVM.config.channelListHost,
+                        playpath: channel.playpath
+                      )
                     )
-                  )
-                    .tag(channel)
+                  }
+                  .buttonStyle(.plain)
                 }
               }
             }
