@@ -219,7 +219,7 @@ final class ChannelPlaybackController {
     }
     if let channel {
       selectedChannel = channel
-      sidebarPath = [channel]
+      withAnimation { sidebarPath = [channel] }
     }
   }
 
@@ -435,12 +435,13 @@ private struct AuthenticatedContainer: View {
           .toolbar {
             ToolbarItem(placement: .navigation) {
               Button {
-                controller.sidebarPath = []
+                withAnimation { controller.sidebarPath = [] }
               } label: {
                 Label("Channels", systemImage: "chevron.backward")
               }
             }
           }
+          .transition(.push(from: .trailing))
         } else if controller.channelListVM.isLoading && controller.channelListVM.channelGroups.isEmpty {
           ProgressView("Loading channels...")
         } else if let error = controller.channelListVM.errorMessage, controller.channelListVM.channelGroups.isEmpty {
@@ -457,7 +458,7 @@ private struct AuthenticatedContainer: View {
               Section(group.category) {
                 ForEach(group.channels) { channel in
                   Button {
-                    controller.sidebarPath = [channel]
+                    withAnimation { controller.sidebarPath = [channel] }
                   } label: {
                     ChannelRow(
                       channel: channel,
@@ -474,6 +475,7 @@ private struct AuthenticatedContainer: View {
           }
           .listStyle(.sidebar)
           .accessibilityIdentifier("channelList")
+          .transition(.push(from: .leading))
         }
       }
 

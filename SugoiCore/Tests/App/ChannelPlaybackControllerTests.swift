@@ -122,6 +122,24 @@ struct ChannelPlaybackControllerAutoSelectTests {
 
     #expect(controller.selectedChannel?.id == "CH1")
   }
+
+  @Test("Re-selects when previously selected channel disappears from fresh list")
+  func reSelectsWhenChannelDisappears() async throws {
+    let controller = try makeController(channelsJSON: Self.channelsJSON)
+    // Pre-set a channel that won't exist in the fresh response
+    controller.selectedChannel = ChannelDTO(
+      id: "REMOVED", uid: nil, name: "Gone Channel", description: nil, tags: nil,
+      no: 99, timeshift: nil, timeshiftLen: nil, epgKeepDays: nil, state: nil,
+      running: nil, playpath: "/gone", liveType: nil
+    )
+    controller.lastChannelId = ""
+
+    await controller.loadAndAutoSelect()
+
+    // Should have re-selected to a channel from the fresh list (CH1 = running)
+    #expect(controller.selectedChannel?.id != "REMOVED")
+    #expect(controller.selectedChannel?.id == "CH1")
+  }
 }
 
 @Suite("ChannelPlaybackController.loadAndAutoSelect with cache")

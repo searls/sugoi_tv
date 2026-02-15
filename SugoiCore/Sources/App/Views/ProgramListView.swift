@@ -357,45 +357,4 @@ private func previewTimestamp(daysAgo: Int, hour: Int, minute: Int = 0) -> Int {
   .frame(width: 500, height: 700)
 }
 
-/// Simulates the real app layout: ProgramListView pushed inside a NavigationStack
-/// within a NavigationSplitView sidebar column (narrow width, like the real app).
-/// State-based sidebar drill-down (workaround for NavigationStack-in-sidebar bug on macOS 26).
-#Preview("Sidebar Context") {
-  @Previewable @State var selectedItem: String? = "NHK総合"
-  let now = Int(Date().timeIntervalSince1970)
-  let vm = ProgramListViewModel.__preview_create(
-    channelName: "NHK総合",
-    entries: [
-      ProgramDTO(time: previewTimestamp(daysAgo: 1, hour: 8), title: "(木)連続テレビ小説", path: "/c"),
-      ProgramDTO(time: previewTimestamp(daysAgo: 1, hour: 12), title: "(木)ニュース", path: ""),
-      ProgramDTO(time: previewTimestamp(daysAgo: 0, hour: 6), title: "おはよう日本", path: "/e"),
-      ProgramDTO(time: now - 1800, title: "NHKニュース", path: ""),
-      ProgramDTO(time: now + 1800, title: "列島ニュース", path: ""),
-      ProgramDTO(time: now + 5400, title: "きょうの料理", path: ""),
-    ]
-  )
-  NavigationSplitView {
-    Group {
-      if selectedItem != nil {
-        ProgramListView(viewModel: vm, onPlayLive: {}, onPlayVOD: { _ in })
-          .toolbar {
-            ToolbarItem(placement: .navigation) {
-              Button { selectedItem = nil } label: {
-                Label("Back", systemImage: "chevron.backward")
-              }
-            }
-          }
-      } else {
-        List {
-          Button("NHK総合") { selectedItem = "NHK総合" }
-          Button("日本テレビ") { selectedItem = "日本テレビ" }
-        }
-        .navigationTitle("Channels")
-      }
-    }
-  } detail: {
-    Color.gray
-  }
-  .frame(width: 900, height: 600)
-}
 #endif
