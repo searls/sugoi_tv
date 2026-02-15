@@ -160,15 +160,6 @@ struct ChannelRow: View {
       thumbnail
       .frame(width: 60, height: 34)
       .clipShape(RoundedRectangle(cornerRadius: 6))
-      .overlay {
-        if channel.running == 1 {
-          Circle()
-            .fill(.red)
-            .frame(width: 8, height: 8)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-            .padding(4)
-        }
-      }
 
       VStack(alignment: .leading, spacing: 2) {
         Text(channel.name)

@@ -250,7 +250,8 @@ struct AuthenticatedContainer: View {
   @Environment(\.horizontalSizeClass) private var sizeClass
   #if os(macOS)
   @Environment(\.openSettings) private var openSettings
-  @State private var macNavPath: [ChannelDTO] = []
+  // FB21962656: macOS NavigationStack sidebar bug — delete when resolved
+  @State private var macChannelSelection: String?
   #endif
 
   init(appState: AppState, session: AuthService.Session) {
@@ -264,11 +265,13 @@ struct AuthenticatedContainer: View {
     NavigationSplitView(columnVisibility: $columnVisibility, preferredCompactColumn: $controller.preferredCompactColumn) {
       sidebarContent
         .navigationSplitViewColumnWidth(min: 220, ideal: 280, max: 360)
+        // FB21962656: macOS NavigationStack sidebar bug — delete when resolved
         #if os(macOS)
         .toolbar {
           ToolbarItem(placement: .navigation) {
             if controller.sidebarPath.last != nil {
               Button {
+                macChannelSelection = controller.selectedChannel?.id
                 withAnimation { controller.sidebarPath = [] }
               } label: {
                 Label("Channels", systemImage: "chevron.backward")
@@ -364,11 +367,9 @@ struct AuthenticatedContainer: View {
 
   private var sidebarContent: some View {
     VStack(spacing: 0) {
-      #if os(macOS)
-      sidebarNavigation
-      #else
       sidebarNavigation
 
+      #if !os(macOS)
       Divider()
       Button("Sign Out") {
         Task { await appState.logout() }
@@ -383,46 +384,45 @@ struct AuthenticatedContainer: View {
   // MARK: Sidebar navigation
 
   private var sidebarNavigation: some View {
-    NavigationStack(path: sidebarNavigationPath) {
-      #if os(macOS)
-      // macOS 26.3: NavigationStack in NavigationSplitView sidebar doesn't render
-      // pushed destinations. Swap root content instead of pushing.
-      // DELETE THIS #if os(macOS) block when Apple fixes the bug.
-      Group {
-        if let channel = controller.sidebarPath.last {
-          programListView(for: channel)
-            .transition(.push(from: .trailing))
-        } else {
-          channelListRoot
-            .transition(.push(from: .leading))
-        }
-      }
-      .onChange(of: macNavPath) { _, newPath in
-        guard let channel = newPath.last else { return }
-        macNavPath = []
-        withAnimation { controller.sidebarPath = [channel] }
-      }
-      #else
-      channelListRoot
-      #endif
-    }
-  }
-
-  private var sidebarNavigationPath: Binding<[ChannelDTO]> {
+    // FB21962656: macOS NavigationStack sidebar bug — delete when resolved
     #if os(macOS)
-    $macNavPath
+    // NavigationStack in NavigationSplitView sidebar doesn't render pushed
+    // destinations. Use List(selection:) to drive content swap instead.
+    // Replace this block with the #else branch when fixed.
+    Group {
+      if let channel = controller.sidebarPath.last {
+        programListView(for: channel)
+          .transition(.push(from: .trailing))
+      } else {
+        channelListContent
+          .transition(.push(from: .leading))
+      }
+    }
+    .onChange(of: macChannelSelection) { _, newSelection in
+      guard let id = newSelection,
+            let channel = controller.channelListVM.channelGroups
+              .flatMap(\.channels).first(where: { $0.id == id })
+      else { return }
+      withAnimation { controller.sidebarPath = [channel] }
+    }
     #else
-    $controller.sidebarPath
+    NavigationStack(path: $controller.sidebarPath) {
+      channelListRoot
+    }
     #endif
   }
 
-  /// Channel list with NavigationLink drill-down to program guide — shared across all platforms.
+
+  // FB21962656: macOS NavigationStack sidebar bug — delete when resolved
+  // (macOS uses List(selection:) content swap instead of NavigationStack push)
+  #if !os(macOS)
   private var channelListRoot: some View {
     channelListContent
       .navigationDestination(for: ChannelDTO.self) { channel in
         programListView(for: channel)
       }
   }
+  #endif
 
   @ViewBuilder
   private var channelListContent: some View {
@@ -437,26 +437,56 @@ struct AuthenticatedContainer: View {
         Button("Retry") { Task { await controller.channelListVM.loadChannels() } }
       }
     } else {
-      List {
-        ForEach(controller.channelListVM.filteredGroups, id: \.category) { group in
-          Section(group.category) {
-            ForEach(group.channels) { channel in
-              NavigationLink(value: channel) {
-                ChannelRow(
-                  channel: channel,
-                  thumbnailURL: StreamURLBuilder.thumbnailURL(
-                    channelListHost: controller.channelListVM.config.channelListHost,
-                    playpath: channel.playpath
-                  )
-                )
-              }
-            }
-          }
+      channelListList
+        .listStyle(.sidebar)
+        .accessibilityIdentifier("channelList")
+    }
+  }
+
+  @ViewBuilder
+  private var channelListList: some View {
+    // FB21962656: macOS NavigationStack sidebar bug — delete when resolved
+    #if os(macOS)
+    List(selection: $macChannelSelection) {
+      channelSections
+    }
+    #else
+    List {
+      channelSections
+    }
+    #endif
+  }
+
+  private var channelSections: some View {
+    ForEach(controller.channelListVM.filteredGroups, id: \.category) { group in
+      Section(group.category) {
+        ForEach(group.channels) { channel in
+          channelItem(channel)
         }
       }
-      .listStyle(.sidebar)
-      .accessibilityIdentifier("channelList")
     }
+  }
+
+  @ViewBuilder
+  private func channelItem(_ channel: ChannelDTO) -> some View {
+    let row = ChannelRow(
+      channel: channel,
+      thumbnailURL: StreamURLBuilder.thumbnailURL(
+        channelListHost: controller.channelListVM.config.channelListHost,
+        playpath: channel.playpath
+      )
+    )
+    // FB21962656: macOS NavigationStack sidebar bug — delete when resolved
+    #if os(macOS)
+    row.tag(channel.id)
+    #else
+    NavigationLink(value: channel) { row }
+      .listRowBackground(
+        controller.selectedChannel?.id == channel.id
+          ? Color.accentColor.opacity(0.2)
+          : nil
+      )
+    #endif
   }
 
   private func programListView(for channel: ChannelDTO) -> some View {

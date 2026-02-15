@@ -175,8 +175,8 @@ public struct ProgramListView: View {
 
   private var programList: some View {
     List {
-      nowSection
       upcomingSection
+      nowSection
       pastSections
     }
   }
@@ -201,7 +201,7 @@ public struct ProgramListView: View {
 
   @ViewBuilder
   private var upcomingSection: some View {
-    let upcoming = viewModel.upcomingPrograms
+    let upcoming = viewModel.upcomingPrograms.prefix(2)
     if !upcoming.isEmpty {
       Section("Upcoming") {
         ForEach(upcoming, id: \.time) { entry in
