@@ -437,9 +437,16 @@ struct AuthenticatedContainer: View {
         Button("Retry") { Task { await controller.channelListVM.loadChannels() } }
       }
     } else {
-      channelListList
-        .listStyle(.sidebar)
-        .accessibilityIdentifier("channelList")
+      ScrollViewReader { proxy in
+        channelListList
+          .onAppear {
+            if let id = controller.selectedChannel?.id {
+              proxy.scrollTo(id, anchor: .center)
+            }
+          }
+      }
+      .listStyle(.sidebar)
+      .accessibilityIdentifier("channelList")
     }
   }
 
@@ -481,6 +488,7 @@ struct AuthenticatedContainer: View {
     row.tag(channel.id)
     #else
     NavigationLink(value: channel) { row }
+      .id(channel.id)
       .listRowBackground(
         controller.selectedChannel?.id == channel.id
           ? Color.accentColor.opacity(0.2)
