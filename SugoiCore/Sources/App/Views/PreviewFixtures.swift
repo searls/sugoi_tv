@@ -87,4 +87,28 @@ struct FixtureContainerPreview: View {
     AuthenticatedContainer(appState: appState, session: fixtureSession)
   }
 }
+
+// MARK: - Public fixture root for UI tests
+
+/// Launched by the app target when `-UITestFixtureMode` is passed.
+/// Same as `FixtureContainerPreview` but `public` so the app target can use it.
+public struct FixtureModeRootView: View {
+  @State private var appState: AppState
+
+  public init() {
+    let fixture: any APIClientProtocol = FixtureAPIClient()
+    let keychain = KeychainService()
+    _appState = State(initialValue: AppState(
+      keychain: keychain,
+      apiClient: APIClient(),
+      authService: AuthService(keychain: keychain, apiClient: fixture),
+      channelService: ChannelService(apiClient: fixture),
+      programGuideService: ProgramGuideService(apiClient: fixture)
+    ))
+  }
+
+  public var body: some View {
+    AuthenticatedContainer(appState: appState, session: fixtureSession)
+  }
+}
 #endif

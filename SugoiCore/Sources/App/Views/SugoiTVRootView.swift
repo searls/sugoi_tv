@@ -163,6 +163,14 @@ final class ChannelPlaybackController {
     hasAttemptedReauth = false
     lastChannelId = channel.id
     preferredCompactColumn = .detail
+    #if DEBUG
+    if ProcessInfo.processInfo.arguments.contains("-UITestFixtureMode"),
+       let testURL = Bundle.module.url(forResource: "test-video", withExtension: "mp4", subdirectory: "PreviewContent") {
+      playerManager.loadLiveStream(url: testURL, referer: "")
+      playerManager.setNowPlayingInfo(title: channel.name, isLiveStream: true)
+      return
+    }
+    #endif
     guard let url = StreamURLBuilder.liveStreamURL(
       liveHost: session.productConfig.liveHost,
       playpath: channel.playpath,
@@ -200,6 +208,14 @@ final class ChannelPlaybackController {
     guard program.hasVOD else { return }
     hasAttemptedReauth = false
     preferredCompactColumn = .detail
+    #if DEBUG
+    if ProcessInfo.processInfo.arguments.contains("-UITestFixtureMode"),
+       let testURL = Bundle.module.url(forResource: "test-video", withExtension: "mp4", subdirectory: "PreviewContent") {
+      playerManager.loadVODStream(url: testURL, referer: "")
+      playerManager.setNowPlayingInfo(title: "\(channelName) - \(program.title)", isLiveStream: false)
+      return
+    }
+    #endif
     guard let url = StreamURLBuilder.vodStreamURL(
       recordHost: session.productConfig.recordHost,
       path: program.path,
@@ -387,8 +403,10 @@ struct AuthenticatedContainer: View {
   // MARK: macOS sidebar workaround
 
   #if os(macOS)
-  /// macOS 26.3 workaround: NavigationStack pushed destinations don't render
-  /// inside NavigationSplitView sidebar. Swap views manually based on sidebarPath.
+  /// macOS 26.3 workaround: NavigationStack inside NavigationSplitView sidebar
+  /// crashes (comparisonTypeMismatch) or renders pushed destinations invisibly.
+  /// We avoid NavigationStack entirely and swap views manually based on sidebarPath.
+  /// To revert when fixed: remove this, remove channelItem(), use the iOS path for all.
   @ViewBuilder
   private var macOSSidebar: some View {
     if let channel = controller.sidebarPath.last {

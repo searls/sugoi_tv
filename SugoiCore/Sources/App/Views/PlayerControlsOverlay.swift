@@ -140,6 +140,7 @@ struct PlayerControlsOverlay: View {
           .frame(width: 36, height: 36)
       }
       .buttonStyle(.borderless)
+      .accessibilityIdentifier("playPauseButton")
 
       // Time + scrubber (VOD) or LIVE badge
       if layout.showsLiveBadge {
@@ -147,6 +148,7 @@ struct PlayerControlsOverlay: View {
           Circle().fill(.red).frame(width: 8, height: 8)
           Text("LIVE").font(.caption.bold())
         }
+        .accessibilityIdentifier("liveBadge")
       }
 
       if layout.showsTimeLabels {
@@ -238,6 +240,7 @@ struct PlayerControlsOverlay: View {
     .tint(.primary)
     .glassEffect(in: .rect(cornerRadius: 16))
     .frame(maxWidth: 640)
+    .accessibilityIdentifier("playerControlsBar")
   }
 
   // MARK: - Speed menu

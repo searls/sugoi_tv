@@ -23,6 +23,7 @@ public struct PlayerView: View {
       }
     }
     .accessibilityIdentifier("playerView")
+    .accessibilityValue(playerManager.state.accessibilityLabel)
     .alert("Playback Error", isPresented: showingError) {
       Button("Retry") { playerManager.retry() }
       Button("Dismiss", role: .cancel) { playerManager.clearError() }

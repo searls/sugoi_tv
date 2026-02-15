@@ -179,6 +179,7 @@ public struct ProgramListView: View {
       upcomingSection
       pastSections
     }
+    .accessibilityIdentifier("programList")
   }
 
   // MARK: - Now section
@@ -193,6 +194,7 @@ public struct ProgramListView: View {
           ProgramRow(entry: current, style: .live)
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("playLiveButton")
       }
     }
   }
@@ -225,6 +227,7 @@ public struct ProgramListView: View {
               ProgramRow(entry: entry, style: .pastWithVOD)
             }
             .buttonStyle(.plain)
+            .accessibilityIdentifier("vodProgram_\(entry.time)")
           } else {
             ProgramRow(entry: entry, style: .pastNoVOD)
           }
