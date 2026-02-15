@@ -8,27 +8,12 @@ struct SugoiTVApp: App {
   #endif
   @State private var appState = AppState()
 
-  #if DEBUG
-  private let isFixtureMode = ProcessInfo.processInfo.arguments.contains("-UITestFixtureMode")
-  #endif
-
   var body: some Scene {
     WindowGroup {
-      #if DEBUG
-      if isFixtureMode {
-        FixtureModeRootView()
-      } else {
-        SugoiTVRootView(appState: appState)
-          #if os(macOS)
-          .background(WindowAccessor())
-          #endif
-      }
-      #else
       SugoiTVRootView(appState: appState)
         #if os(macOS)
         .background(WindowAccessor())
         #endif
-      #endif
     }
     #if os(macOS)
     .windowStyle(.hiddenTitleBar)

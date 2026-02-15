@@ -13,19 +13,6 @@ public enum PlaybackState: Sendable, Equatable {
   case ended
 }
 
-extension PlaybackState {
-  public var accessibilityLabel: String {
-    switch self {
-    case .idle: "idle"
-    case .loading: "loading"
-    case .playing: "playing"
-    case .paused: "paused"
-    case .failed: "failed"
-    case .ended: "ended"
-    }
-  }
-}
-
 /// Manages AVPlayer lifecycle with referer header injection
 @MainActor
 @Observable
