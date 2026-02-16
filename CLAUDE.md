@@ -90,12 +90,24 @@ variables.
 considered done.** "It compiles" and "tests pass" are necessary but not
 sufficient — you must see the pixels.
 
+**Use `/run-app` for the full build → launch → interact → screenshot workflow.**
+That skill documents the correct tools and syntax for each platform:
+
+- **macOS**: `screencapture -x -l <windowID>` for screenshots, `cliclick` for
+  mouse/keyboard interaction (screen coordinates)
+- **Simulators**: `axe screenshot` for screenshots, `axe tap --label` / `axe
+  type` for interaction (accessibility-based), `axe describe-ui` to discover
+  element labels before tapping
+- **NEVER use AppleScript** for UI automation — it is unreliable. Use `cliclick`
+  (macOS) or `axe` (simulators)
+
 **MANDATORY for every feature/plan that changes views:**
 
-1. **Build and run** the app via Xcode MCP
+1. **Build and run** the app (`script/build_and_run --platform <platform>`)
 2. **Take a screenshot** of each affected screen state
 3. **Read the screenshot** yourself and confirm the result matches intent
-4. **Document what you see** — call out anything unexpected, even if minor
+4. **Interact** with the app if needed (tap, type, navigate) and screenshot again
+5. **Document what you see** — call out anything unexpected, even if minor
 
 Do NOT delegate visual verification to a subagent and trust its prose summary.
 Read the screenshot image yourself.
