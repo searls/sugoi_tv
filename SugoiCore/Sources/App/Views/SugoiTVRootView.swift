@@ -77,14 +77,16 @@ final class ChannelPlaybackController {
   let playerManager = PlayerManager()
   let channelListVM: ChannelListViewModel
   var selectedChannel: ChannelDTO?
+  /// ID of the currently-playing VOD program, or nil when playing live.
+  var playingProgramID: String?
   @ObservationIgnored @AppStorage("lastChannelId") var lastChannelId: String = ""
 
   /// Sidebar drill-down path: empty = channel list, [channel] = program list for that channel.
   var sidebarPath: [ChannelDTO] = []
 
-  /// Stable ViewModel for the currently-drilled-into channel's program list.
-  /// Created once per channel navigation, persists across SwiftUI re-renders.
-  var programListVM: ProgramListViewModel?
+  /// Cached program list ViewModels keyed by channel ID.
+  /// Persists across navigation so returning to a channel is instant.
+  private var programListVMs: [String: ProgramListViewModel] = [:]
 
   var session: AuthService.Session
   /// One-shot guard: allows a single reauth attempt per stream load.
@@ -148,8 +150,10 @@ final class ChannelPlaybackController {
       channel = allChannels.first
     }
     if let channel {
+      let isNew = selectedChannel?.id != channel.id
       selectedChannel = channel
       withAnimation { sidebarPath = [channel] }
+      if isNew { playChannel(channel) }
     }
   }
 
@@ -169,6 +173,8 @@ final class ChannelPlaybackController {
       accessToken: session.accessToken
     ) else { return }
 
+    playingProgramID = nil
+
     // When the proxy is ready, route through it so AirPlay receivers can
     // reach the VMS server. Fall back to direct URL + AVURLAsset header
     // injection (works locally but not over AirPlay).
@@ -183,7 +189,7 @@ final class ChannelPlaybackController {
 
   /// Return the cached ProgramListViewModel, or create a new one for the given channel.
   func programListViewModel(for channel: ChannelDTO) -> ProgramListViewModel {
-    if let existing = programListVM, existing.channelID == channel.id {
+    if let existing = programListVMs[channel.id] {
       return existing
     }
     let vm = ProgramListViewModel(
@@ -192,7 +198,7 @@ final class ChannelPlaybackController {
       channelID: channel.id,
       channelName: channel.name
     )
-    programListVM = vm
+    programListVMs[channel.id] = vm
     return vm
   }
 
@@ -205,6 +211,8 @@ final class ChannelPlaybackController {
       path: program.path,
       accessToken: session.accessToken
     ) else { return }
+
+    playingProgramID = program.id
 
     if let proxiedURL = refererProxy.proxiedURL(for: url) {
       playerManager.loadVODStream(url: proxiedURL, referer: "")
@@ -326,16 +334,16 @@ struct AuthenticatedContainer: View {
     }
     .onChange(of: controller.sidebarPath) { oldPath, newPath in
       if let channel = newPath.last, oldPath.last?.id != channel.id {
-        // Drilled into a new channel
+        // Drilled into a channel
+        let isNewChannel = controller.selectedChannel?.id != channel.id
         controller.selectedChannel = channel
         controller.lastChannelId = channel.id
-        if sizeClass != .compact {
-          // Mac/iPad: auto-play live when drilling into channel
+        if isNewChannel && sizeClass != .compact {
+          // Mac/iPad: auto-play live when switching to a different channel
           controller.playChannel(channel)
         }
       } else if newPath.isEmpty && !oldPath.isEmpty {
         // Navigated back to channel list
-        controller.programListVM = nil
         if sizeClass == .compact {
           controller.playerManager.stop()
         }
@@ -397,13 +405,6 @@ struct AuthenticatedContainer: View {
         channelListContent
           .transition(.push(from: .leading))
       }
-    }
-    .onChange(of: macChannelSelection) { _, newSelection in
-      guard let id = newSelection,
-            let channel = controller.channelListVM.channelGroups
-              .flatMap(\.channels).first(where: { $0.id == id })
-      else { return }
-      withAnimation { controller.sidebarPath = [channel] }
     }
     #else
     NavigationStack(path: $controller.sidebarPath) {
@@ -485,7 +486,14 @@ struct AuthenticatedContainer: View {
     )
     // FB21962656: macOS NavigationStack sidebar bug — delete when resolved
     #if os(macOS)
-    row.tag(channel.id)
+    Button {
+      macChannelSelection = channel.id
+      withAnimation { controller.sidebarPath = [channel] }
+    } label: {
+      row
+    }
+    .buttonStyle(.plain)
+    .tag(channel.id)
     #else
     NavigationLink(value: channel) { row }
       .id(channel.id)
@@ -500,6 +508,7 @@ struct AuthenticatedContainer: View {
   private func programListView(for channel: ChannelDTO) -> some View {
     ProgramListView(
       viewModel: controller.programListViewModel(for: channel),
+      playingProgramID: controller.selectedChannel?.id == channel.id ? controller.playingProgramID : nil,
       onPlayLive: { controller.playChannel(channel) },
       onPlayVOD: { program in
         controller.playVOD(program: program, channelName: channel.name)

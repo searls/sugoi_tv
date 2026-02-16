@@ -5,6 +5,11 @@ import Testing
 
 @Suite("ProgramListViewModel")
 struct ProgramListViewModelTests {
+  /// Isolated UserDefaults per test to avoid cache leakage.
+  static func ephemeralDefaults() -> UserDefaults {
+    UserDefaults(suiteName: "test.\(UUID().uuidString)")!
+  }
+
   static var testConfig: ProductConfig {
     ProductConfig(
       vmsHost: "http://live.yoitv.com:9083",
@@ -38,7 +43,8 @@ struct ProgramListViewModelTests {
     let service = ProgramGuideService(apiClient: APIClient(session: mock.session))
     let vm = ProgramListViewModel(
       programGuideService: service, config: Self.testConfig,
-      channelID: "CH1", channelName: "NHK"
+      channelID: "CH1", channelName: "NHK",
+      defaults: Self.ephemeralDefaults()
     )
 
     await vm.loadPrograms()
@@ -49,10 +55,9 @@ struct ProgramListViewModelTests {
     #expect(vm.channelName == "NHK")
   }
 
-  @Test("Skips loading when entries already populated")
+  @Test("Background refresh updates entries even when already populated")
   @MainActor
-  func skipsReloadWhenPopulated() async {
-    // Handler that would replace entries if called
+  func refreshesWhenPopulated() async {
     let mock = MockHTTPSession()
     mock.requestHandler = { _ in
       let response = HTTPURLResponse(
@@ -67,7 +72,8 @@ struct ProgramListViewModelTests {
     let service = ProgramGuideService(apiClient: APIClient(session: mock.session))
     let vm = ProgramListViewModel(
       programGuideService: service, config: Self.testConfig,
-      channelID: "CH1", channelName: "NHK"
+      channelID: "CH1", channelName: "NHK",
+      defaults: Self.ephemeralDefaults()
     )
 
     // Pre-populate entries
@@ -75,14 +81,14 @@ struct ProgramListViewModelTests {
 
     await vm.loadPrograms()
 
-    // If guard didn't short-circuit, entries would be replaced with "Replaced"
+    // Background refresh replaces entries with fresh data
     #expect(vm.entries.count == 1)
-    #expect(vm.entries[0].title == "Existing")
+    #expect(vm.entries[0].title == "Replaced")
   }
 
   @Test("Current program is detected")
   @MainActor
-  func currentProgram() async {
+  func liveProgram() async {
     let mock = MockHTTPSession()
     let json = """
       {
@@ -104,13 +110,14 @@ struct ProgramListViewModelTests {
     let service = ProgramGuideService(apiClient: APIClient(session: mock.session))
     let vm = ProgramListViewModel(
       programGuideService: service, config: Self.testConfig,
-      channelID: "CH1", channelName: "NHK"
+      channelID: "CH1", channelName: "NHK",
+      defaults: Self.ephemeralDefaults()
     )
 
     await vm.loadPrograms()
 
-    #expect(vm.currentProgram != nil)
-    #expect(vm.currentProgram?.title == "Current Show")
+    #expect(vm.liveProgram != nil)
+    #expect(vm.liveProgram?.title == "Current Show")
   }
 
   @Test("Load failure sets error message")
@@ -124,7 +131,8 @@ struct ProgramListViewModelTests {
     let service = ProgramGuideService(apiClient: APIClient(session: mock.session))
     let vm = ProgramListViewModel(
       programGuideService: service, config: Self.testConfig,
-      channelID: "CH1", channelName: "NHK"
+      channelID: "CH1", channelName: "NHK",
+      defaults: Self.ephemeralDefaults()
     )
 
     await vm.loadPrograms()
@@ -170,7 +178,7 @@ struct ProgramListViewModelSectioningTests {
       ProgramDTO(time: Self.jstTimestamp(month: 2, day: 14, hour: 18), title: "Future", path: ""),
     ]
 
-    let current = ProgramGuideService.currentProgram(in: entries, at: now)
+    let current = ProgramGuideService.liveProgram(in: entries, at: now)
     let sections = ProgramListViewModel.groupPastByDate(entries: entries, current: current, now: now)
 
     // 3 days of past content (today, yesterday, Wed Feb 12)
@@ -203,7 +211,7 @@ struct ProgramListViewModelSectioningTests {
       ProgramDTO(time: Self.jstTimestamp(month: 2, day: 14, hour: 14), title: "Current", path: ""),
       ProgramDTO(time: Self.jstTimestamp(month: 2, day: 14, hour: 18), title: "Future", path: ""),
     ]
-    let current = ProgramGuideService.currentProgram(in: entries, at: now)
+    let current = ProgramGuideService.liveProgram(in: entries, at: now)
     let sections = ProgramListViewModel.groupPastByDate(entries: entries, current: current, now: now)
 
     #expect(sections.isEmpty)
@@ -215,7 +223,7 @@ struct ProgramListViewModelSectioningTests {
     let entries = [
       ProgramDTO(time: Self.jstTimestamp(month: 2, day: 14, hour: 14), title: "Current", path: ""),
     ]
-    let current = ProgramGuideService.currentProgram(in: entries, at: now)
+    let current = ProgramGuideService.liveProgram(in: entries, at: now)
     let sections = ProgramListViewModel.groupPastByDate(entries: entries, current: current, now: now)
 
     #expect(sections.isEmpty)

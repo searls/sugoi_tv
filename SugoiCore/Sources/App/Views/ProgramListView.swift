@@ -19,17 +19,34 @@ public final class ProgramListViewModel {
 
   private let programGuideService: ProgramGuideService
   private let config: ProductConfig
+  private let defaults: UserDefaults
   let channelID: String
 
-  public init(programGuideService: ProgramGuideService, config: ProductConfig, channelID: String, channelName: String) {
+  private var cacheKey: String { "cachedPrograms_\(channelID)" }
+
+  public init(programGuideService: ProgramGuideService, config: ProductConfig, channelID: String, channelName: String, defaults: UserDefaults = .standard) {
     self.programGuideService = programGuideService
     self.config = config
     self.channelID = channelID
     self.channelName = channelName
+    self.defaults = defaults
+    loadCachedPrograms()
   }
 
-  var currentProgram: ProgramDTO? {
-    ProgramGuideService.currentProgram(in: entries)
+  private func loadCachedPrograms() {
+    guard let data = defaults.data(forKey: cacheKey),
+          let cached = try? JSONDecoder().decode([ProgramDTO].self, from: data),
+          !cached.isEmpty else { return }
+    entries = cached
+  }
+
+  private func cachePrograms(_ programs: [ProgramDTO]) {
+    guard let data = try? JSONEncoder().encode(programs) else { return }
+    defaults.set(data, forKey: cacheKey)
+  }
+
+  var liveProgram: ProgramDTO? {
+    ProgramGuideService.liveProgram(in: entries)
   }
 
   var upcomingPrograms: [ProgramDTO] {
@@ -37,7 +54,7 @@ public final class ProgramListViewModel {
   }
 
   var pastByDate: [DateSection] {
-    Self.groupPastByDate(entries: entries, current: currentProgram)
+    Self.groupPastByDate(entries: entries, current: liveProgram)
   }
 
   #if DEBUG
@@ -55,15 +72,19 @@ public final class ProgramListViewModel {
   #endif
 
   func loadPrograms() async {
-    guard entries.isEmpty else { return }
-    isLoading = true
+    let showSpinner = entries.isEmpty
+    if showSpinner { isLoading = true }
     errorMessage = nil
     do {
-      entries = try await programGuideService.fetchPrograms(config: config, channelID: channelID)
+      let fresh = try await programGuideService.fetchPrograms(config: config, channelID: channelID)
+      entries = fresh
+      cachePrograms(fresh)
     } catch {
-      errorMessage = "Failed to load program guide."
+      if entries.isEmpty {
+        errorMessage = "Failed to load program guide."
+      }
     }
-    isLoading = false
+    if showSpinner { isLoading = false }
   }
 
   // MARK: - Sectioning logic
@@ -140,15 +161,19 @@ public final class ProgramListViewModel {
 
 public struct ProgramListView: View {
   var viewModel: ProgramListViewModel
+  /// ID of the currently-playing program, or nil when playing live.
+  var playingProgramID: String?
   var onPlayLive: () -> Void
   var onPlayVOD: (ProgramDTO) -> Void
 
   public init(
     viewModel: ProgramListViewModel,
+    playingProgramID: String? = nil,
     onPlayLive: @escaping () -> Void,
     onPlayVOD: @escaping (ProgramDTO) -> Void
   ) {
     self.viewModel = viewModel
+    self.playingProgramID = playingProgramID
     self.onPlayLive = onPlayLive
     self.onPlayVOD = onPlayVOD
   }
@@ -174,10 +199,22 @@ public struct ProgramListView: View {
   }
 
   private var programList: some View {
-    List {
-      upcomingSection
-      nowSection
-      pastSections
+    ScrollViewReader { proxy in
+      List {
+        upcomingSection
+        nowSection
+        pastSections
+      }
+      .onAppear {
+        // Wait for List to lay out rows before scrolling
+        Task {
+          try? await Task.sleep(for: .milliseconds(200))
+          let target = playingProgramID ?? viewModel.liveProgram?.id
+          if let target {
+            proxy.scrollTo(target, anchor: .top)
+          }
+        }
+      }
     }
   }
 
@@ -185,7 +222,7 @@ public struct ProgramListView: View {
 
   @ViewBuilder
   private var nowSection: some View {
-    if let current = viewModel.currentProgram {
+    if let current = viewModel.liveProgram {
       Section("Now") {
         Button {
           onPlayLive()
@@ -193,6 +230,7 @@ public struct ProgramListView: View {
           ProgramRow(entry: current, style: .live)
         }
         .buttonStyle(.plain)
+        .id(current.id)
       }
     }
   }
@@ -204,7 +242,7 @@ public struct ProgramListView: View {
     let upcoming = viewModel.upcomingPrograms.prefix(2)
     if !upcoming.isEmpty {
       Section("Upcoming") {
-        ForEach(upcoming, id: \.time) { entry in
+        ForEach(upcoming) { entry in
           ProgramRow(entry: entry, style: .upcoming)
         }
       }
@@ -217,7 +255,7 @@ public struct ProgramListView: View {
   private var pastSections: some View {
     ForEach(viewModel.pastByDate, id: \.label) { section in
       Section(section.label) {
-        ForEach(section.programs, id: \.time) { entry in
+        ForEach(section.programs) { entry in
           if entry.hasVOD {
             Button {
               onPlayVOD(entry)
@@ -225,8 +263,10 @@ public struct ProgramListView: View {
               ProgramRow(entry: entry, style: .pastWithVOD)
             }
             .buttonStyle(.plain)
+            .id(entry.id)
           } else {
             ProgramRow(entry: entry, style: .pastNoVOD)
+              .id(entry.id)
           }
         }
       }

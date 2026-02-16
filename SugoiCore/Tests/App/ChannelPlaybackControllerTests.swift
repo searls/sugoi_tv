@@ -345,13 +345,11 @@ struct ChannelPlaybackControllerCompactColumnTests {
   @Test("Switches to detail column when playing a channel")
   func switchesToDetailOnPlay() async throws {
     let controller = try makeController()
-    await controller.loadAndAutoSelect()
-
     #expect(controller.preferredCompactColumn == .sidebar)
 
-    if let channel = controller.selectedChannel {
-      controller.playChannel(channel)
-    }
+    await controller.loadAndAutoSelect()
+
+    // autoSelectChannel calls playChannel, which switches to detail
     #expect(controller.preferredCompactColumn == .detail)
   }
 }

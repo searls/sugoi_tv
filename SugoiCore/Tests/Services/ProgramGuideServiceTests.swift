@@ -43,20 +43,20 @@ struct ProgramGuideServiceTests {
   }
 
   @Test("Finds current program by timestamp")
-  func currentProgram() {
+  func liveProgram() {
     let entries = [
       ProgramDTO(time: 1000, title: "Show A", path: "/a"),
       ProgramDTO(time: 2000, title: "Show B", path: ""),
       ProgramDTO(time: 3000, title: "Show C", path: ""),
     ]
 
-    let current = ProgramGuideService.currentProgram(in: entries, at: Date(timeIntervalSince1970: 2500))
+    let current = ProgramGuideService.liveProgram(in: entries, at: Date(timeIntervalSince1970: 2500))
     #expect(current?.title == "Show B")
 
-    let first = ProgramGuideService.currentProgram(in: entries, at: Date(timeIntervalSince1970: 1500))
+    let first = ProgramGuideService.liveProgram(in: entries, at: Date(timeIntervalSince1970: 1500))
     #expect(first?.title == "Show A")
 
-    let before = ProgramGuideService.currentProgram(in: entries, at: Date(timeIntervalSince1970: 500))
+    let before = ProgramGuideService.liveProgram(in: entries, at: Date(timeIntervalSince1970: 500))
     #expect(before == nil)
   }
 

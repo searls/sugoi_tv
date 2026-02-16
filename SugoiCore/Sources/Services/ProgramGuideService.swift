@@ -56,7 +56,7 @@ public actor ProgramGuideService {
   }
 
   /// Find the currently-airing program from a list of program entries
-  public static func currentProgram(
+  public static func liveProgram(
     in entries: [ProgramDTO],
     at date: Date = Date()
   ) -> ProgramDTO? {

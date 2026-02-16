@@ -30,10 +30,13 @@ public struct ChannelProgramsDTO: Codable, Sendable {
 }
 
 /// A single program entry
-public struct ProgramDTO: Codable, Sendable, Equatable {
+public struct ProgramDTO: Codable, Sendable, Equatable, Identifiable {
   public let time: Int     // Unix seconds
   public let title: String
   public let path: String  // Empty string = live-only (no VOD recording)
+
+  /// VOD programs use path as ID; live-only programs fall back to time.
+  public var id: String { path.isEmpty ? "live-\(time)" : path }
 
   /// Whether this program has a catch-up VOD recording
   public var hasVOD: Bool { !path.isEmpty }
