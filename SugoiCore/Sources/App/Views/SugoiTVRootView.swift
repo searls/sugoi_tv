@@ -414,10 +414,12 @@ struct AuthenticatedContainer: View {
     }
     #if os(macOS)
     .onKeyPress(.upArrow) {
+      guard !sidebarFocused else { return .ignored }
       sidebarFocused = true
       return .handled
     }
     .onKeyPress(.downArrow) {
+      guard !sidebarFocused else { return .ignored }
       sidebarFocused = true
       return .handled
     }
