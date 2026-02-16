@@ -166,6 +166,8 @@ public struct ProgramListView: View {
   var onPlayLive: () -> Void
   var onPlayVOD: (ProgramDTO) -> Void
 
+  @State private var selectedProgramID: String?
+
   public init(
     viewModel: ProgramListViewModel,
     playingProgramID: String? = nil,
@@ -200,10 +202,24 @@ public struct ProgramListView: View {
 
   private var programList: some View {
     ScrollViewReader { proxy in
-      List {
+      List(selection: $selectedProgramID) {
         upcomingSection
         nowSection
         pastSections
+      }
+      .listStyle(.sidebar)
+      .onKeyPress(.return) {
+        guard let id = selectedProgramID else { return .ignored }
+        if id == viewModel.liveProgram?.id {
+          onPlayLive()
+          return .handled
+        }
+        if let program = viewModel.entries.first(where: { $0.id == id }),
+           program.hasVOD {
+          onPlayVOD(program)
+          return .handled
+        }
+        return .ignored
       }
       .onAppear {
         // Wait for List to lay out rows before scrolling
@@ -224,13 +240,10 @@ public struct ProgramListView: View {
   private var nowSection: some View {
     if let current = viewModel.liveProgram {
       Section("Now") {
-        Button {
-          onPlayLive()
-        } label: {
-          ProgramRow(entry: current, style: .live)
-        }
-        .buttonStyle(.plain)
-        .id(current.id)
+        ProgramRow(entry: current, style: .live)
+          .simultaneousGesture(TapGesture().onEnded { onPlayLive() })
+          .tag(current.id)
+          .id(current.id)
       }
     }
   }
@@ -244,6 +257,7 @@ public struct ProgramListView: View {
       Section("Upcoming") {
         ForEach(upcoming) { entry in
           ProgramRow(entry: entry, style: .upcoming)
+            .tag(entry.id)
         }
       }
     }
@@ -256,18 +270,12 @@ public struct ProgramListView: View {
     ForEach(viewModel.pastByDate, id: \.label) { section in
       Section(section.label) {
         ForEach(section.programs) { entry in
-          if entry.hasVOD {
-            Button {
-              onPlayVOD(entry)
-            } label: {
-              ProgramRow(entry: entry, style: .pastWithVOD)
-            }
-            .buttonStyle(.plain)
+          ProgramRow(entry: entry, style: entry.hasVOD ? .pastWithVOD : .pastNoVOD)
+            .simultaneousGesture(TapGesture().onEnded {
+              if entry.hasVOD { onPlayVOD(entry) }
+            })
+            .tag(entry.id)
             .id(entry.id)
-          } else {
-            ProgramRow(entry: entry, style: .pastNoVOD)
-              .id(entry.id)
-          }
         }
       }
     }

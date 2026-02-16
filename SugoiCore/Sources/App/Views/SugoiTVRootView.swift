@@ -458,6 +458,14 @@ struct AuthenticatedContainer: View {
     List(selection: $macChannelSelection) {
       channelSections
     }
+    .onKeyPress(.return) {
+      guard let id = macChannelSelection,
+            let channel = controller.channelListVM.channelGroups
+              .flatMap(\.channels).first(where: { $0.id == id })
+      else { return .ignored }
+      withAnimation { controller.sidebarPath = [channel] }
+      return .handled
+    }
     #else
     List {
       channelSections
@@ -486,14 +494,12 @@ struct AuthenticatedContainer: View {
     )
     // FB21962656: macOS NavigationStack sidebar bug — delete when resolved
     #if os(macOS)
-    Button {
-      macChannelSelection = channel.id
-      withAnimation { controller.sidebarPath = [channel] }
-    } label: {
-      row
-    }
-    .buttonStyle(.plain)
-    .tag(channel.id)
+    row.tag(channel.id)
+      .simultaneousGesture(TapGesture().onEnded {
+        // List(selection:) onChange won't fire when re-clicking the
+        // already-selected channel, so handle all taps here too.
+        withAnimation { controller.sidebarPath = [channel] }
+      })
     #else
     NavigationLink(value: channel) { row }
       .id(channel.id)

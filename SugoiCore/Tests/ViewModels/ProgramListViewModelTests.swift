@@ -141,6 +141,87 @@ struct ProgramListViewModelTests {
     #expect(vm.errorMessage == "Failed to load program guide.")
     #expect(vm.entries.isEmpty)
   }
+
+  @Test("New VM loads cached programs from UserDefaults")
+  @MainActor
+  func loadsCachedPrograms() async {
+    let defaults = Self.ephemeralDefaults()
+    let mock = MockHTTPSession()
+    let programJSON = """
+      {
+        "result": [{"id": "CH1", "name": "NHK", "record_epg": "[{\\"time\\":1000,\\"title\\":\\"Cached Show\\",\\"path\\":\\"/cached\\"}]"}],
+        "code": "OK"
+      }
+      """
+    mock.requestHandler = { _ in
+      let response = HTTPURLResponse(
+        url: URL(string: "http://test.com")!, statusCode: 200, httpVersion: nil, headerFields: nil
+      )!
+      return (response, Data(programJSON.utf8))
+    }
+
+    // First VM fetches and caches
+    let service = ProgramGuideService(apiClient: APIClient(session: mock.session))
+    let vm1 = ProgramListViewModel(
+      programGuideService: service, config: Self.testConfig,
+      channelID: "CH1", channelName: "NHK",
+      defaults: defaults
+    )
+    await vm1.loadPrograms()
+    #expect(vm1.entries.count == 1)
+
+    // Second VM should have entries from cache immediately (no network needed)
+    let failingMock = MockHTTPSession()
+    failingMock.requestHandler = { _ in throw URLError(.notConnectedToInternet) }
+    let failingService = ProgramGuideService(apiClient: APIClient(session: failingMock.session))
+    let vm2 = ProgramListViewModel(
+      programGuideService: failingService, config: Self.testConfig,
+      channelID: "CH1", channelName: "NHK",
+      defaults: defaults
+    )
+    #expect(vm2.entries.count == 1)
+    #expect(vm2.entries[0].title == "Cached Show")
+  }
+
+  @Test("Network failure with cached data shows no error")
+  @MainActor
+  func networkFailureWithCache() async {
+    let defaults = Self.ephemeralDefaults()
+
+    // Pre-populate cache via a successful load
+    let mock = MockHTTPSession()
+    mock.requestHandler = { _ in
+      let response = HTTPURLResponse(
+        url: URL(string: "http://test.com")!, statusCode: 200, httpVersion: nil, headerFields: nil
+      )!
+      let json = """
+        {"result": [{"id": "CH1", "name": "NHK", "record_epg": "[{\\"time\\":1000,\\"title\\":\\"Cached\\",\\"path\\":\\"/c\\"}]"}], "code": "OK"}
+        """
+      return (response, Data(json.utf8))
+    }
+    let service = ProgramGuideService(apiClient: APIClient(session: mock.session))
+    let vm1 = ProgramListViewModel(
+      programGuideService: service, config: Self.testConfig,
+      channelID: "CH1", channelName: "NHK",
+      defaults: defaults
+    )
+    await vm1.loadPrograms()
+
+    // New VM with network failure — should show cached data, no error
+    let failingMock = MockHTTPSession()
+    failingMock.requestHandler = { _ in throw URLError(.notConnectedToInternet) }
+    let failingService = ProgramGuideService(apiClient: APIClient(session: failingMock.session))
+    let vm2 = ProgramListViewModel(
+      programGuideService: failingService, config: Self.testConfig,
+      channelID: "CH1", channelName: "NHK",
+      defaults: defaults
+    )
+    await vm2.loadPrograms()
+
+    #expect(vm2.errorMessage == nil)
+    #expect(vm2.entries.count == 1)
+    #expect(vm2.entries[0].title == "Cached")
+  }
 }
 
 // MARK: - Sectioning logic tests
