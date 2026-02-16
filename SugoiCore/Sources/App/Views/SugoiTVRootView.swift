@@ -396,11 +396,12 @@ struct AuthenticatedContainer: View {
         let program = ProgramDTO(time: 0, title: title, path: id)
         controller.playVOD(program: program, channelName: name, resumeFrom: pos)
       case .playLive:
-        controller.sidebarPath = [channel]
+        // Stay on channel list — live viewers think in channels, not programs
         controller.playChannel(channel)
       case .doNothing:
         break
       }
+      sidebarFocused = true
     }
     .onAppear {
       let show = SidebarPersistence.shouldShowSidebar(
@@ -547,17 +548,28 @@ struct AuthenticatedContainer: View {
         channelListList
           .onAppear {
             sidebarFocused = true
-            if let id = controller.selectedChannel?.id {
-              #if os(macOS)
-              macChannelSelection = id
-              #endif
-              proxy.scrollTo(id, anchor: .center)
+            scrollToSelected(proxy: proxy)
+          }
+          .onChange(of: controller.selectedChannel?.id) { _, _ in
+            // Delay: selectedChannel changes in .task after onAppear;
+            // the List needs a moment to settle before scrollTo works.
+            Task { @MainActor in
+              await Task.yield()
+              scrollToSelected(proxy: proxy)
             }
           }
       }
       .listStyle(.sidebar)
       .accessibilityIdentifier("channelList")
     }
+  }
+
+  private func scrollToSelected(proxy: ScrollViewProxy) {
+    guard let id = controller.selectedChannel?.id else { return }
+    #if os(macOS)
+    macChannelSelection = id
+    #endif
+    proxy.scrollTo(id, anchor: .center)
   }
 
   @ViewBuilder
@@ -604,6 +616,7 @@ struct AuthenticatedContainer: View {
     // FB21962656: macOS NavigationStack sidebar bug — delete when resolved
     #if os(macOS)
     row.tag(channel.id)
+      .id(channel.id)
       .simultaneousGesture(TapGesture().onEnded {
         // List(selection:) onChange won't fire when re-clicking the
         // already-selected channel, so handle all taps here too.
