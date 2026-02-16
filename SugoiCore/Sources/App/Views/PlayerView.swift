@@ -7,21 +7,33 @@ import SwiftUI
 /// tvOS uses SwiftUI's VideoPlayer with system controls.
 public struct PlayerView: View {
   let playerManager: PlayerManager
+  var loadingTitle: String = ""
+  var loadingThumbnailURL: URL?
 
-  public init(playerManager: PlayerManager) {
+  public init(playerManager: PlayerManager, loadingTitle: String = "", loadingThumbnailURL: URL? = nil) {
     self.playerManager = playerManager
+    self.loadingTitle = loadingTitle
+    self.loadingThumbnailURL = loadingThumbnailURL
   }
 
   public var body: some View {
-    Group {
-      if let player = playerManager.player {
-        platformPlayer(player: player)
-          .ignoresSafeArea()
-      } else {
-        Color.black
-          .ignoresSafeArea()
+    ZStack {
+      Group {
+        if let player = playerManager.player {
+          platformPlayer(player: player)
+            .ignoresSafeArea()
+        } else {
+          Color.black
+            .ignoresSafeArea()
+        }
+      }
+
+      if playerManager.state == .loading {
+        StreamLoadingOverlay(title: loadingTitle, thumbnailURL: loadingThumbnailURL)
+          .transition(.opacity)
       }
     }
+    .animation(.easeInOut(duration: 0.3), value: playerManager.state == .loading)
     .accessibilityIdentifier("playerView")
     .alert("Playback Error", isPresented: showingError) {
       Button("Retry") { playerManager.retry() }
@@ -50,6 +62,42 @@ public struct PlayerView: View {
   private var errorMessage: String {
     if case .failed(let msg) = playerManager.state { return msg }
     return ""
+  }
+}
+
+// MARK: - Loading overlay
+
+struct StreamLoadingOverlay: View {
+  let title: String
+  let thumbnailURL: URL?
+
+  var body: some View {
+    VStack(spacing: 12) {
+      if let thumbnailURL {
+        AsyncImage(url: thumbnailURL) { image in
+          image
+            .resizable()
+            .aspectRatio(contentMode: .fit)
+        } placeholder: {
+          Color.clear
+        }
+        .frame(width: 80, height: 80)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+      }
+
+      if !title.isEmpty {
+        Text(title)
+          .font(.title2.weight(.medium))
+          .foregroundStyle(.white)
+          .multilineTextAlignment(.center)
+      }
+
+      Text("Now loading")
+        .font(.body)
+        .foregroundStyle(.white.secondary)
+    }
+    .padding(.horizontal, 32)
+    .padding(.vertical, 24)
   }
 }
 

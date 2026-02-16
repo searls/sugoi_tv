@@ -240,7 +240,8 @@ public struct ProgramListView: View {
   private var nowSection: some View {
     if let current = viewModel.liveProgram {
       Section("Now") {
-        ProgramRow(entry: current, style: .live)
+        ProgramRow(entry: current, style: .live, isPlaying: playingProgramID == nil)
+          .listRowBackground(playingProgramID == nil ? Color.accentColor.opacity(0.15) : nil)
           .simultaneousGesture(TapGesture().onEnded { onPlayLive() })
           .tag(current.id)
           .id(current.id)
@@ -270,7 +271,9 @@ public struct ProgramListView: View {
     ForEach(viewModel.pastByDate, id: \.label) { section in
       Section(section.label) {
         ForEach(section.programs) { entry in
-          ProgramRow(entry: entry, style: entry.hasVOD ? .pastWithVOD : .pastNoVOD)
+          let playing = playingProgramID == entry.id
+          ProgramRow(entry: entry, style: entry.hasVOD ? .pastWithVOD : .pastNoVOD, isPlaying: playing)
+            .listRowBackground(playing ? Color.accentColor.opacity(0.15) : nil)
             .simultaneousGesture(TapGesture().onEnded {
               if entry.hasVOD { onPlayVOD(entry) }
             })
@@ -294,6 +297,7 @@ enum ProgramRowStyle {
 struct ProgramRow: View {
   let entry: ProgramDTO
   let style: ProgramRowStyle
+  var isPlaying: Bool = false
 
   private static let jstFormatter: DateFormatter = {
     let f = DateFormatter()
@@ -340,19 +344,25 @@ struct ProgramRow: View {
 
   @ViewBuilder
   private var trailingBadge: some View {
-    switch style {
-    case .live:
-      Text("LIVE")
-        .font(.caption2.bold())
-        .foregroundStyle(.white)
-        .padding(.horizontal, 6)
-        .padding(.vertical, 2)
-        .background(.red, in: Capsule())
-    case .pastWithVOD:
-      Image(systemName: "play.circle")
-        .foregroundStyle(.blue)
-    case .upcoming, .pastNoVOD:
-      EmptyView()
+    if isPlaying {
+      Image(systemName: "speaker.wave.2.fill")
+        .foregroundStyle(.tint)
+        .symbolEffect(.variableColor.iterative, isActive: true)
+    } else {
+      switch style {
+      case .live:
+        Text("LIVE")
+          .font(.caption2.bold())
+          .foregroundStyle(.white)
+          .padding(.horizontal, 6)
+          .padding(.vertical, 2)
+          .background(.red, in: Capsule())
+      case .pastWithVOD:
+        Image(systemName: "play.circle")
+          .foregroundStyle(.blue)
+      case .upcoming, .pastNoVOD:
+        EmptyView()
+      }
     }
   }
 }

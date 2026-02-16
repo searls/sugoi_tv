@@ -79,7 +79,13 @@ final class ChannelPlaybackController {
   var selectedChannel: ChannelDTO?
   /// ID of the currently-playing VOD program, or nil when playing live.
   var playingProgramID: String?
+  /// Metadata for the stream currently loading, shown in the loading overlay.
+  var loadingTitle: String = ""
   @ObservationIgnored @AppStorage("lastChannelId") var lastChannelId: String = ""
+  @ObservationIgnored @AppStorage("lastPlayingProgramID") var lastPlayingProgramID: String = ""
+  @ObservationIgnored @AppStorage("lastPlayingProgramTitle") var lastPlayingProgramTitle: String = ""
+  @ObservationIgnored @AppStorage("lastPlayingChannelName") var lastPlayingChannelName: String = ""
+  @ObservationIgnored @AppStorage("lastVODPosition") var lastVODPosition: Double = 0
 
   /// Sidebar drill-down path: empty = channel list, [channel] = program list for that channel.
   var sidebarPath: [ChannelDTO] = []
@@ -136,24 +142,17 @@ final class ChannelPlaybackController {
 
   /// Pick a channel from whatever is currently in channelGroups.
   /// Prefers the last-played channel, then first live, then first overall.
-  /// Also pushes into sidebarPath so the program list is visible.
+  /// Sets selectedChannel but stays on the channel list (no drill-in or auto-play).
   private func autoSelectChannel() {
     let allChannels = channelListVM.channelGroups.flatMap(\.channels)
     guard !allChannels.isEmpty else { return }
-    let channel: ChannelDTO?
     if !lastChannelId.isEmpty,
        let match = allChannels.first(where: { $0.id == lastChannelId }) {
-      channel = match
+      selectedChannel = match
     } else if let live = allChannels.first(where: { $0.running == 1 }) {
-      channel = live
+      selectedChannel = live
     } else {
-      channel = allChannels.first
-    }
-    if let channel {
-      let isNew = selectedChannel?.id != channel.id
-      selectedChannel = channel
-      withAnimation { sidebarPath = [channel] }
-      if isNew { playChannel(channel) }
+      selectedChannel = allChannels.first
     }
   }
 
@@ -174,6 +173,11 @@ final class ChannelPlaybackController {
     ) else { return }
 
     playingProgramID = nil
+    loadingTitle = channel.name
+    lastPlayingProgramID = ""
+    lastPlayingProgramTitle = ""
+    lastPlayingChannelName = ""
+    lastVODPosition = 0
 
     // When the proxy is ready, route through it so AirPlay receivers can
     // reach the VMS server. Fall back to direct URL + AVURLAsset header
@@ -202,7 +206,7 @@ final class ChannelPlaybackController {
     return vm
   }
 
-  func playVOD(program: ProgramDTO, channelName: String) {
+  func playVOD(program: ProgramDTO, channelName: String, resumeFrom: TimeInterval = 0) {
     guard program.hasVOD else { return }
     hasAttemptedReauth = false
     preferredCompactColumn = .detail
@@ -213,14 +217,68 @@ final class ChannelPlaybackController {
     ) else { return }
 
     playingProgramID = program.id
+    loadingTitle = program.title
+    lastPlayingProgramID = program.path
+    lastPlayingProgramTitle = program.title
+    lastPlayingChannelName = channelName
 
     if let proxiedURL = refererProxy.proxiedURL(for: url) {
-      playerManager.loadVODStream(url: proxiedURL, referer: "")
+      playerManager.loadVODStream(url: proxiedURL, referer: "", resumeFrom: resumeFrom)
     } else {
       let referer = session.productConfig.vmsReferer
-      playerManager.loadVODStream(url: url, referer: referer)
+      playerManager.loadVODStream(url: url, referer: referer, resumeFrom: resumeFrom)
     }
     playerManager.setNowPlayingInfo(title: "\(channelName) - \(program.title)", isLiveStream: false)
+  }
+}
+
+// MARK: - Launch playback
+
+/// Pure logic for deciding what to play on launch.
+public enum LaunchPlayback {
+  public enum Decision: Equatable {
+    case doNothing
+    case playLive
+    case resumeVOD(programID: String, title: String, channelName: String, position: TimeInterval)
+  }
+
+  /// Decides what to auto-play when the app launches.
+  /// - Parameters:
+  ///   - isCompact: true on iPhone (compact horizontal size class)
+  ///   - lastActiveTimestamp: seconds since 1970 of last activity (0 = first launch)
+  ///   - now: current time in seconds since 1970
+  ///   - lastProgramID: persisted VOD path, empty when last session was live
+  ///   - lastProgramTitle: persisted VOD title
+  ///   - lastChannelName: persisted channel name for the VOD
+  ///   - lastVODPosition: persisted playback position in seconds
+  ///   - staleThreshold: seconds of inactivity before session is considered stale (default 12h)
+  public static func decide(
+    isCompact: Bool,
+    lastActiveTimestamp: TimeInterval,
+    now: TimeInterval,
+    lastProgramID: String,
+    lastProgramTitle: String,
+    lastChannelName: String,
+    lastVODPosition: TimeInterval,
+    staleThreshold: TimeInterval = 12 * 3600
+  ) -> Decision {
+    guard !isCompact else { return .doNothing }
+    guard lastActiveTimestamp > 0 else { return .playLive } // first launch
+
+    let elapsed = now - lastActiveTimestamp
+    if elapsed >= staleThreshold { return .playLive }
+
+    // Recent session with VOD in progress
+    if !lastProgramID.isEmpty {
+      return .resumeVOD(
+        programID: lastProgramID,
+        title: lastProgramTitle,
+        channelName: lastChannelName,
+        position: lastVODPosition
+      )
+    }
+
+    return .playLive
   }
 }
 
@@ -256,6 +314,7 @@ struct AuthenticatedContainer: View {
   @AppStorage("lastActiveTimestamp") private var lastActiveTimestamp: Double = 0
   @Environment(\.scenePhase) private var scenePhase
   @Environment(\.horizontalSizeClass) private var sizeClass
+  @FocusState private var sidebarFocused: Bool
   #if os(macOS)
   @Environment(\.openSettings) private var openSettings
   // FB21962656: macOS NavigationStack sidebar bug — delete when resolved
@@ -272,6 +331,7 @@ struct AuthenticatedContainer: View {
   var body: some View {
     NavigationSplitView(columnVisibility: $columnVisibility, preferredCompactColumn: $controller.preferredCompactColumn) {
       sidebarContent
+        .focused($sidebarFocused)
         .navigationSplitViewColumnWidth(min: 220, ideal: 280, max: 360)
         // FB21962656: macOS NavigationStack sidebar bug — delete when resolved
         #if os(macOS)
@@ -290,7 +350,16 @@ struct AuthenticatedContainer: View {
         #endif
     } detail: {
       ZStack(alignment: .topLeading) {
-        PlayerView(playerManager: controller.playerManager)
+        PlayerView(
+          playerManager: controller.playerManager,
+          loadingTitle: controller.loadingTitle,
+          loadingThumbnailURL: controller.selectedChannel.flatMap {
+            StreamURLBuilder.thumbnailURL(
+              channelListHost: controller.channelListVM.config.channelListHost,
+              playpath: $0.playpath
+            )
+          }
+        )
         #if os(macOS)
         if columnVisibility == .detailOnly {
           trafficLightGlassBacking
@@ -309,7 +378,30 @@ struct AuthenticatedContainer: View {
       }
       #endif
     }
-    .task { await controller.loadAndAutoSelect() }
+    .task {
+      await controller.loadAndAutoSelect()
+      guard sizeClass != .compact, let channel = controller.selectedChannel else { return }
+      let decision = LaunchPlayback.decide(
+        isCompact: sizeClass == .compact,
+        lastActiveTimestamp: lastActiveTimestamp,
+        now: Date().timeIntervalSince1970,
+        lastProgramID: controller.lastPlayingProgramID,
+        lastProgramTitle: controller.lastPlayingProgramTitle,
+        lastChannelName: controller.lastPlayingChannelName,
+        lastVODPosition: controller.lastVODPosition
+      )
+      switch decision {
+      case .resumeVOD(let id, let title, let name, let pos):
+        controller.sidebarPath = [channel]
+        let program = ProgramDTO(time: 0, title: title, path: id)
+        controller.playVOD(program: program, channelName: name, resumeFrom: pos)
+      case .playLive:
+        controller.sidebarPath = [channel]
+        controller.playChannel(channel)
+      case .doNothing:
+        break
+      }
+    }
     .onAppear {
       let show = SidebarPersistence.shouldShowSidebar(
         wasSidebarVisible: sidebarVisible,
@@ -319,12 +411,25 @@ struct AuthenticatedContainer: View {
       columnVisibility = show ? .doubleColumn : .detailOnly
       lastActiveTimestamp = Date().timeIntervalSince1970
     }
+    #if os(macOS)
+    .onKeyPress(.upArrow) {
+      sidebarFocused = true
+      return .handled
+    }
+    .onKeyPress(.downArrow) {
+      sidebarFocused = true
+      return .handled
+    }
+    #endif
     .onChange(of: columnVisibility) { _, newValue in
       sidebarVisible = (newValue != .detailOnly)
     }
     .onChange(of: scenePhase) { _, newPhase in
       if newPhase == .background || newPhase == .inactive {
         lastActiveTimestamp = Date().timeIntervalSince1970
+        if controller.playingProgramID != nil {
+          controller.lastVODPosition = controller.playerManager.currentTime
+        }
       }
     }
     .onChange(of: appState.session?.accessToken) { _, _ in
@@ -441,7 +546,11 @@ struct AuthenticatedContainer: View {
       ScrollViewReader { proxy in
         channelListList
           .onAppear {
+            sidebarFocused = true
             if let id = controller.selectedChannel?.id {
+              #if os(macOS)
+              macChannelSelection = id
+              #endif
               proxy.scrollTo(id, anchor: .center)
             }
           }

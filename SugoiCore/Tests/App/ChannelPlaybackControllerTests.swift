@@ -348,8 +348,9 @@ struct ChannelPlaybackControllerCompactColumnTests {
     #expect(controller.preferredCompactColumn == .sidebar)
 
     await controller.loadAndAutoSelect()
+    // autoSelectChannel no longer auto-plays; explicitly play
+    controller.playChannel(controller.selectedChannel!)
 
-    // autoSelectChannel calls playChannel, which switches to detail
     #expect(controller.preferredCompactColumn == .detail)
   }
 }
@@ -419,6 +420,37 @@ struct ChannelPlaybackControllerPlayVODTests {
 
     #expect(controller.hasAttemptedReauth == false)
   }
+
+  @Test("playVOD persists VOD program info")
+  func playVODPersistsInfo() throws {
+    let controller = try makeController()
+    let program = ProgramDTO(time: 1000, title: "Past Show", path: "/query/past_show")
+
+    controller.playVOD(program: program, channelName: "NHK総合")
+
+    #expect(controller.lastPlayingProgramID == "/query/past_show")
+    #expect(controller.lastPlayingProgramTitle == "Past Show")
+    #expect(controller.lastPlayingChannelName == "NHK総合")
+  }
+
+  @Test("playChannel clears VOD persistence")
+  func playChannelClearsVODInfo() throws {
+    let controller = try makeController()
+    let program = ProgramDTO(time: 1000, title: "Past Show", path: "/query/past_show")
+    controller.playVOD(program: program, channelName: "NHK総合")
+
+    let channel = ChannelDTO(
+      id: "CH1", uid: nil, name: "NHK総合", description: nil, tags: nil,
+      no: 1, timeshift: nil, timeshiftLen: nil, epgKeepDays: nil, state: nil,
+      running: 1, playpath: "/query/s/nhk", liveType: nil
+    )
+    controller.playChannel(channel)
+
+    #expect(controller.lastPlayingProgramID == "")
+    #expect(controller.lastPlayingProgramTitle == "")
+    #expect(controller.lastPlayingChannelName == "")
+    #expect(controller.lastVODPosition == 0)
+  }
 }
 
 @Suite("ChannelPlaybackController.sidebarPath")
@@ -461,13 +493,13 @@ struct ChannelPlaybackControllerSidebarPathTests {
     #expect(controller.sidebarPath.isEmpty)
   }
 
-  @Test("loadAndAutoSelect pushes channel into sidebarPath")
-  func autoSelectPushesSidebarPath() async throws {
+  @Test("loadAndAutoSelect selects channel without drilling into program list")
+  func autoSelectStaysOnChannelList() async throws {
     let controller = try makeController()
     await controller.loadAndAutoSelect()
 
-    #expect(controller.sidebarPath.count == 1)
-    #expect(controller.sidebarPath.first?.id == controller.selectedChannel?.id)
+    #expect(controller.selectedChannel != nil)
+    #expect(controller.sidebarPath.isEmpty)
   }
 
   @Test("programListViewModel creates and caches viewmodel for channel")
@@ -586,5 +618,104 @@ struct PlayChannelProxyFallbackTests {
     #expect(controller.refererProxy.isReady == false)
     controller.playVOD(program: program, channelName: "NHK")
     #expect(controller.playerManager.state != .idle)
+  }
+}
+
+// MARK: - LaunchPlayback.decide
+
+@Suite("LaunchPlayback.decide")
+struct LaunchPlaybackTests {
+  let now: TimeInterval = 1_700_000_000 // arbitrary fixed time
+  let recentTimestamp: TimeInterval = 1_700_000_000 - 3600 // 1 hour ago
+  let staleTimestamp: TimeInterval = 1_700_000_000 - 13 * 3600 // 13 hours ago
+  let exactThreshold: TimeInterval = 1_700_000_000 - 12 * 3600 // exactly 12 hours ago
+
+  @Test("iPhone always returns doNothing")
+  func iPhoneDoesNothing() {
+    let result = LaunchPlayback.decide(
+      isCompact: true,
+      lastActiveTimestamp: recentTimestamp,
+      now: now,
+      lastProgramID: "/vod/show",
+      lastProgramTitle: "Show",
+      lastChannelName: "NHK",
+      lastVODPosition: 120
+    )
+    #expect(result == .doNothing)
+  }
+
+  @Test("First launch returns playLive")
+  func firstLaunchPlaysLive() {
+    let result = LaunchPlayback.decide(
+      isCompact: false,
+      lastActiveTimestamp: 0,
+      now: now,
+      lastProgramID: "",
+      lastProgramTitle: "",
+      lastChannelName: "",
+      lastVODPosition: 0
+    )
+    #expect(result == .playLive)
+  }
+
+  @Test("Stale session returns playLive")
+  func staleSessionPlaysLive() {
+    let result = LaunchPlayback.decide(
+      isCompact: false,
+      lastActiveTimestamp: staleTimestamp,
+      now: now,
+      lastProgramID: "/vod/show",
+      lastProgramTitle: "Show",
+      lastChannelName: "NHK",
+      lastVODPosition: 120
+    )
+    #expect(result == .playLive)
+  }
+
+  @Test("Exactly at 12h threshold returns playLive")
+  func exactThresholdPlaysLive() {
+    let result = LaunchPlayback.decide(
+      isCompact: false,
+      lastActiveTimestamp: exactThreshold,
+      now: now,
+      lastProgramID: "/vod/show",
+      lastProgramTitle: "Show",
+      lastChannelName: "NHK",
+      lastVODPosition: 120
+    )
+    #expect(result == .playLive)
+  }
+
+  @Test("Recent session with VOD returns resumeVOD")
+  func recentWithVODResumes() {
+    let result = LaunchPlayback.decide(
+      isCompact: false,
+      lastActiveTimestamp: recentTimestamp,
+      now: now,
+      lastProgramID: "/vod/show",
+      lastProgramTitle: "Past Show",
+      lastChannelName: "NHK総合",
+      lastVODPosition: 300
+    )
+    #expect(result == .resumeVOD(
+      programID: "/vod/show",
+      title: "Past Show",
+      channelName: "NHK総合",
+      position: 300
+    ))
+  }
+
+  @Test("Recent session without VOD returns playLive")
+  func recentWithoutVODPlaysLive() {
+    let result = LaunchPlayback.decide(
+      isCompact: false,
+      lastActiveTimestamp: recentTimestamp,
+      now: now,
+      lastProgramID: "",
+      lastProgramTitle: "",
+      lastChannelName: "",
+      lastVODPosition: 0
+    )
+    #expect(result == .playLive)
   }
 }
