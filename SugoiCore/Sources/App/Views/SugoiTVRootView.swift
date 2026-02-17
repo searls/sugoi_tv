@@ -393,7 +393,8 @@ struct AuthenticatedContainer: View {
       .ignoresSafeArea()
       .onTapGesture {
         guard controller.shouldCollapseSidebarOnTap else { return }
-        if columnVisibility != .detailOnly {
+        if sidebarVisible {
+          sidebarVisible = false
           withAnimation {
             columnVisibility = .detailOnly
           }
@@ -439,8 +440,9 @@ struct AuthenticatedContainer: View {
         // Setting it synchronously is a no-op (already true from program list focus)
         // and prevents the deferred transition in onAppear from firing.
         return .handled
-      } else if columnVisibility != .detailOnly {
+      } else if sidebarVisible {
         // Channel list → hide sidebar
+        sidebarVisible = false
         withAnimation { columnVisibility = .detailOnly }
         return .handled
       }
@@ -451,19 +453,12 @@ struct AuthenticatedContainer: View {
       controller.playerManager.togglePlayPause()
       return .handled
     }
-    #if !os(macOS)
-    // On macOS, sidebar toggle goes through NSApp.sendAction in the App target.
-    // On other platforms, the menu command posts this notification instead.
     .onReceive(NotificationCenter.default.publisher(for: .toggleSidebar)) { _ in
+      sidebarVisible.toggle()
       withAnimation {
-        columnVisibility = columnVisibility == .detailOnly ? .doubleColumn : .detailOnly
+        columnVisibility = sidebarVisible ? .doubleColumn : .detailOnly
       }
-    }
-    #endif
-    .onChange(of: columnVisibility) { _, newValue in
-      let visible = newValue != .detailOnly
-      sidebarVisible = visible
-      if visible {
+      if sidebarVisible {
         focusChannelList()
       }
     }
