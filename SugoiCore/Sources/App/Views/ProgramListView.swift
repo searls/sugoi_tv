@@ -167,6 +167,7 @@ public struct ProgramListView: View {
   var onPlayVOD: (ProgramDTO) -> Void
 
   @State private var selectedProgramID: String?
+  @FocusState private var listFocused: Bool
 
   public init(
     viewModel: ProgramListViewModel,
@@ -207,6 +208,8 @@ public struct ProgramListView: View {
         nowSection
         pastSections
       }
+      .focused($listFocused)
+      .focusEffectDisabled()
       .listStyle(.sidebar)
       .onKeyPress(.return) {
         guard let id = selectedProgramID else { return .ignored }
@@ -227,8 +230,10 @@ public struct ProgramListView: View {
           try? await Task.sleep(for: .milliseconds(200))
           let target = playingProgramID ?? viewModel.liveProgram?.id
           if let target {
+            selectedProgramID = target
             proxy.scrollTo(target, anchor: .top)
           }
+          listFocused = true
         }
       }
     }

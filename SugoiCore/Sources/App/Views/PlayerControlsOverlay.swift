@@ -28,13 +28,11 @@ struct CustomPlayerView: View {
         pipController: pipController
       )
     }
-    #if os(macOS)
     .focusable()
     .onKeyPress(.space) {
       playerManager.togglePlayPause()
       return .handled
     }
-    #endif
   }
 }
 

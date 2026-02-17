@@ -315,10 +315,9 @@ struct AuthenticatedContainer: View {
   @Environment(\.scenePhase) private var scenePhase
   @Environment(\.horizontalSizeClass) private var sizeClass
   @FocusState private var sidebarFocused: Bool
+  @State private var channelSelection: String?
   #if os(macOS)
   @Environment(\.openSettings) private var openSettings
-  // FB21962656: macOS NavigationStack sidebar bug — delete when resolved
-  @State private var macChannelSelection: String?
   #endif
 
   init(appState: AppState, session: AuthService.Session) {
@@ -339,7 +338,7 @@ struct AuthenticatedContainer: View {
           ToolbarItem(placement: .navigation) {
             if controller.sidebarPath.last != nil {
               Button {
-                macChannelSelection = controller.selectedChannel?.id
+                channelSelection = controller.selectedChannel?.id
                 withAnimation { controller.sidebarPath = [] }
               } label: {
                 Label("Channels", systemImage: "chevron.backward")
@@ -367,7 +366,6 @@ struct AuthenticatedContainer: View {
         #endif
       }
       .ignoresSafeArea()
-      #if os(macOS)
       .onTapGesture {
         guard controller.shouldCollapseSidebarOnTap else { return }
         if columnVisibility != .detailOnly {
@@ -376,7 +374,6 @@ struct AuthenticatedContainer: View {
           }
         }
       }
-      #endif
     }
     .task {
       await controller.loadAndAutoSelect()
@@ -412,7 +409,6 @@ struct AuthenticatedContainer: View {
       columnVisibility = show ? .doubleColumn : .detailOnly
       lastActiveTimestamp = Date().timeIntervalSince1970
     }
-    #if os(macOS)
     .onKeyPress(.upArrow) {
       guard !sidebarFocused else { return .ignored }
       sidebarFocused = true
@@ -423,7 +419,22 @@ struct AuthenticatedContainer: View {
       sidebarFocused = true
       return .handled
     }
-    #endif
+    .onKeyPress(.escape) {
+      guard !controller.sidebarPath.isEmpty else { return .ignored }
+      withAnimation { controller.sidebarPath = [] }
+      // Delay selection until channel list re-renders after content swap
+      Task { @MainActor in
+        await Task.yield()
+        channelSelection = controller.selectedChannel?.id
+        sidebarFocused = true
+      }
+      return .handled
+    }
+    .onKeyPress(.space) {
+      guard controller.playerManager.player != nil else { return .ignored }
+      controller.playerManager.togglePlayPause()
+      return .handled
+    }
     .onChange(of: columnVisibility) { _, newValue in
       sidebarVisible = (newValue != .detailOnly)
     }
@@ -568,32 +579,22 @@ struct AuthenticatedContainer: View {
 
   private func scrollToSelected(proxy: ScrollViewProxy) {
     guard let id = controller.selectedChannel?.id else { return }
-    #if os(macOS)
-    macChannelSelection = id
-    #endif
+    channelSelection = id
     proxy.scrollTo(id, anchor: .center)
   }
 
-  @ViewBuilder
   private var channelListList: some View {
-    // FB21962656: macOS NavigationStack sidebar bug — delete when resolved
-    #if os(macOS)
-    List(selection: $macChannelSelection) {
+    List(selection: $channelSelection) {
       channelSections
     }
     .onKeyPress(.return) {
-      guard let id = macChannelSelection,
+      guard let id = channelSelection,
             let channel = controller.channelListVM.channelGroups
               .flatMap(\.channels).first(where: { $0.id == id })
       else { return .ignored }
       withAnimation { controller.sidebarPath = [channel] }
       return .handled
     }
-    #else
-    List {
-      channelSections
-    }
-    #endif
   }
 
   private var channelSections: some View {
@@ -606,33 +607,24 @@ struct AuthenticatedContainer: View {
     }
   }
 
-  @ViewBuilder
   private func channelItem(_ channel: ChannelDTO) -> some View {
-    let row = ChannelRow(
+    ChannelRow(
       channel: channel,
       thumbnailURL: StreamURLBuilder.thumbnailURL(
         channelListHost: controller.channelListVM.config.channelListHost,
         playpath: channel.playpath
       )
     )
-    // FB21962656: macOS NavigationStack sidebar bug — delete when resolved
-    #if os(macOS)
-    row.tag(channel.id)
-      .id(channel.id)
-      .simultaneousGesture(TapGesture().onEnded {
-        // List(selection:) onChange won't fire when re-clicking the
-        // already-selected channel, so handle all taps here too.
-        withAnimation { controller.sidebarPath = [channel] }
-      })
-    #else
-    NavigationLink(value: channel) { row }
-      .id(channel.id)
-      .listRowBackground(
-        controller.selectedChannel?.id == channel.id
-          ? Color.accentColor.opacity(0.2)
-          : nil
-      )
-    #endif
+    .tag(channel.id)
+    .id(channel.id)
+    .simultaneousGesture(TapGesture().onEnded {
+      withAnimation { controller.sidebarPath = [channel] }
+    })
+    .listRowBackground(
+      controller.selectedChannel?.id == channel.id
+        ? Color.accentColor.opacity(0.2)
+        : nil
+    )
   }
 
   private func programListView(for channel: ChannelDTO) -> some View {
