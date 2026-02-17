@@ -93,7 +93,7 @@ public final class ProgramListViewModel {
 
   // MARK: - Sectioning logic
 
-  nonisolated(unsafe) static let jstCalendar: Calendar = {
+  nonisolated static let jstCalendar: Calendar = {
     var cal = Calendar(identifier: .gregorian)
     cal.timeZone = TimeZone(identifier: "Asia/Tokyo")!
     cal.locale = Locale(identifier: "en_US")
@@ -152,7 +152,7 @@ public final class ProgramListViewModel {
     }
   }
 
-  nonisolated(unsafe) private static let sectionFormatter: DateFormatter = {
+  nonisolated private static let sectionFormatter: DateFormatter = {
     let f = DateFormatter()
     f.dateFormat = "EEE, MMM d"
     f.timeZone = TimeZone(identifier: "Asia/Tokyo")
