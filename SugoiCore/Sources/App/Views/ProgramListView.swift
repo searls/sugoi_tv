@@ -228,7 +228,6 @@ public struct ProgramListView: View {
   var focusTrigger: Bool = false
 
   @State private var selectedProgramID: String?
-  @State private var scrollTarget: String?
   @FocusState private var listFocused: Bool
 
   public init(
@@ -278,47 +277,50 @@ public struct ProgramListView: View {
   }
 
   private var programList: some View {
-    List(selection: $selectedProgramID) {
-      backHeader
-      upcomingSection
-      liveSection
-      pastSections
-    }
-    .focused($listFocused)
-    .focusEffectDisabled()
-    .listStyle(.sidebar)
-    .defaultScrollAnchor(.center)
-    .scrollPosition(id: $scrollTarget, anchor: .center)
-    .onKeyPress(.return) {
-      guard let id = selectedProgramID else { return .ignored }
-      if id == viewModel.liveProgram?.id {
-        onPlayLive()
-        return .handled
+    ScrollViewReader { proxy in
+      List(selection: $selectedProgramID) {
+        backHeader
+        upcomingSection
+        liveSection
+        pastSections
       }
-      if let program = viewModel.entries.first(where: { $0.id == id }),
-         program.hasVOD {
-        onPlayVOD(program)
-        return .handled
+      .focused($listFocused)
+      .focusEffectDisabled()
+      .listStyle(.sidebar)
+      .onKeyPress(.return) {
+        guard let id = selectedProgramID else { return .ignored }
+        if id == viewModel.liveProgram?.id {
+          onPlayLive()
+          return .handled
+        }
+        if let program = viewModel.entries.first(where: { $0.id == id }),
+           program.hasVOD {
+          onPlayVOD(program)
+          return .handled
+        }
+        return .ignored
       }
-      return .ignored
-    }
-    .onAppear {
-      selectPlaying()
-    }
-    .onChange(of: focusTrigger) { _, _ in
-      selectPlaying()
-    }
-    .onChange(of: viewModel.liveProgram?.id) { _, _ in
-      if selectedProgramID == nil {
-        selectPlaying()
+      .onAppear {
+        selectAndScroll(proxy: proxy)
+      }
+      .onChange(of: focusTrigger) { _, _ in
+        selectAndScroll(proxy: proxy)
+      }
+      .onChange(of: viewModel.liveProgram?.id) { _, _ in
+        if selectedProgramID == nil {
+          selectAndScroll(proxy: proxy)
+        }
       }
     }
   }
 
-  private func selectPlaying() {
+  private func selectAndScroll(proxy: ScrollViewProxy) {
     if let target = playingOrLiveID {
       selectedProgramID = target
-      scrollTarget = target
+      Task { @MainActor in
+        try? await Task.sleep(for: .milliseconds(200))
+        proxy.scrollTo(target, anchor: .center)
+      }
     }
     // Defer focus — the List may not be ready to accept focus during sidebar animation
     DispatchQueue.main.async {
@@ -367,6 +369,7 @@ public struct ProgramListView: View {
           .listRowBackground(playingProgramID == nil ? Color.accentColor.opacity(0.15) : nil)
           .simultaneousGesture(TapGesture().onEnded { onPlayLive() })
           .tag(current.id)
+          .id(current.id)
       }
     }
   }
@@ -400,6 +403,7 @@ public struct ProgramListView: View {
               if entry.hasVOD { onPlayVOD(entry) }
             })
             .tag(entry.id)
+            .id(entry.id)
         }
       }
     }
