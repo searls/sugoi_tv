@@ -318,7 +318,7 @@ public struct ProgramListView: View {
     if let target = playingOrLiveID {
       selectedProgramID = target
       Task { @MainActor in
-        try? await Task.sleep(for: .milliseconds(200))
+        await Task.yield()
         proxy.scrollTo(target, anchor: .center)
       }
     }
