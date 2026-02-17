@@ -1,7 +1,4 @@
 import SwiftUI
-#if os(macOS)
-import AppKit
-#endif
 
 // MARK: - Sidebar toggle notification
 
@@ -454,18 +451,15 @@ struct AuthenticatedContainer: View {
       controller.playerManager.togglePlayPause()
       return .handled
     }
+    #if !os(macOS)
+    // On macOS, sidebar toggle goes through NSApp.sendAction in the App target.
+    // On other platforms, the menu command posts this notification instead.
     .onReceive(NotificationCenter.default.publisher(for: .toggleSidebar)) { _ in
-      // Use AppKit's native NSSplitViewController toggle — it manages the
-      // sidebar animation, state, and focus reliably. Manually setting
-      // columnVisibility fights the framework (binding gets overridden).
-      #if os(macOS)
-      NSApp.sendAction(#selector(NSSplitViewController.toggleSidebar(_:)), to: nil, from: nil)
-      #else
       withAnimation {
         columnVisibility = columnVisibility == .detailOnly ? .doubleColumn : .detailOnly
       }
-      #endif
     }
+    #endif
     .onChange(of: columnVisibility) { _, newValue in
       let visible = newValue != .detailOnly
       sidebarVisible = visible
