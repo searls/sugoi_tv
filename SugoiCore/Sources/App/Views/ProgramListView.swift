@@ -23,10 +23,11 @@ public final class ProgramListViewModel {
   private(set) var upcomingPrograms: [ProgramDTO] = []
   private(set) var pastByDate: [DateSection] = []
 
-  /// How many past programs to render in the List. Starts at `pageSize`,
-  /// grows as the user scrolls, resets on channel change.
+  /// How many past programs to render in the List. Starts at
+  /// min(7 days, 100 items), grows as the user scrolls, resets on channel change.
   var pastDisplayLimit = ProgramListViewModel.pageSize
   nonisolated static let pageSize = 100
+  nonisolated static let initialMaxDays = 7
 
   private let programGuideService: ProgramGuideService
   private let config: ProductConfig
@@ -57,6 +58,7 @@ public final class ProgramListViewModel {
     liveProgram = ProgramGuideService.liveProgram(in: entries)
     upcomingPrograms = ProgramGuideService.upcomingPrograms(in: entries, limit: 5)
     pastByDate = Self.groupPastByDate(entries: entries, current: liveProgram)
+    pastDisplayLimit = Self.initialLimit(for: pastByDate)
   }
 
   #if DEBUG
@@ -138,7 +140,19 @@ public final class ProgramListViewModel {
   }
 
   func resetPastDisplay() {
-    pastDisplayLimit = Self.pageSize
+    pastDisplayLimit = Self.initialLimit(for: pastByDate)
+  }
+
+  /// Initial display limit: min(programs within `initialMaxDays`, `pageSize`).
+  nonisolated static func initialLimit(
+    for sections: [DateSection],
+    now: Date = Date()
+  ) -> Int {
+    let cutoff = Int(now.timeIntervalSince1970) - (initialMaxDays * 86400)
+    let recentCount = sections.reduce(0) { total, section in
+      total + section.programs.count(where: { $0.time >= cutoff })
+    }
+    return min(max(recentCount, 0), pageSize)
   }
 
   nonisolated static func groupPastByDate(
@@ -214,6 +228,7 @@ public struct ProgramListView: View {
   var focusTrigger: Bool = false
 
   @State private var selectedProgramID: String?
+  @State private var scrollTarget: String?
   @FocusState private var listFocused: Bool
 
   public init(
@@ -272,6 +287,8 @@ public struct ProgramListView: View {
     .focused($listFocused)
     .focusEffectDisabled()
     .listStyle(.sidebar)
+    .defaultScrollAnchor(.center)
+    .scrollPosition(id: $scrollTarget, anchor: .center)
     .onKeyPress(.return) {
       guard let id = selectedProgramID else { return .ignored }
       if id == viewModel.liveProgram?.id {
@@ -301,6 +318,7 @@ public struct ProgramListView: View {
   private func selectPlaying() {
     if let target = playingOrLiveID {
       selectedProgramID = target
+      scrollTarget = target
     }
     // Defer focus — the List may not be ready to accept focus during sidebar animation
     DispatchQueue.main.async {

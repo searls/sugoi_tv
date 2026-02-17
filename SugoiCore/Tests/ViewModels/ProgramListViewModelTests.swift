@@ -333,27 +333,51 @@ struct ProgramListViewModelSectioningTests {
     #expect(sections[0].label.hasPrefix("Wed"))
   }
 
+  @Test("Initial display limit is min(7 days, 100 items)")
+  func initialLimit() {
+    // 40 programs/day × 30 days = busy channel
+    // 7 days × 40 = 280, capped to 100
+    let now = Self.jstDate(month: 2, day: 14, hour: 15)
+    var busyEntries: [ProgramDTO] = []
+    for day in 0..<30 {
+      for slot in 0..<40 {
+        let hour = 6 + (slot % 18)
+        let minute = (slot / 18) * 30
+        busyEntries.append(ProgramDTO(
+          time: Self.jstTimestamp(month: 2, day: max(1, 14 - day), hour: hour, minute: minute),
+          title: "Busy \(day)-\(slot)",
+          path: "/p\(day)_\(slot)"
+        ))
+      }
+    }
+    busyEntries.sort { $0.time < $1.time }
+    let busySections = ProgramListViewModel.groupPastByDate(entries: busyEntries, current: nil, now: now)
+    let busyLimit = ProgramListViewModel.initialLimit(for: busySections, now: now)
+    #expect(busyLimit == ProgramListViewModel.pageSize) // capped at 100
+
+    // 5 programs/day × 30 days = quiet channel
+    // 7 days × 5 = 35, under 100 so not capped
+    var quietEntries: [ProgramDTO] = []
+    for day in 0..<30 {
+      for slot in 0..<5 {
+        quietEntries.append(ProgramDTO(
+          time: Self.jstTimestamp(month: 2, day: max(1, 14 - day), hour: 8 + slot * 3),
+          title: "Quiet \(day)-\(slot)",
+          path: "/q\(day)_\(slot)"
+        ))
+      }
+    }
+    quietEntries.sort { $0.time < $1.time }
+    let quietSections = ProgramListViewModel.groupPastByDate(entries: quietEntries, current: nil, now: now)
+    let quietLimit = ProgramListViewModel.initialLimit(for: quietSections, now: now)
+    #expect(quietLimit > 0)
+    #expect(quietLimit < ProgramListViewModel.pageSize) // under 100
+    #expect(quietLimit == 35) // exactly 7 days × 5/day
+  }
+
   @Test("displayedPastByDate paginates and showMorePast loads next page")
   @MainActor
   func pastPagination() {
-    let now = Self.jstDate(month: 2, day: 14, hour: 15)
-    // Create 250 past programs across multiple days
-    var entries: [ProgramDTO] = []
-    for i in 0..<250 {
-      let day = 1 + (i / 40) // spread across ~7 days
-      let hour = 6 + (i % 18) // 06:00–23:00
-      let minute = (i * 7) % 60
-      entries.append(ProgramDTO(
-        time: Self.jstTimestamp(month: 2, day: max(1, 14 - day), hour: hour, minute: minute),
-        title: "Program \(i)",
-        path: "/p\(i)"
-      ))
-    }
-    // Sort by time ascending (as the API returns)
-    entries.sort { $0.time < $1.time }
-    // Add a current program
-    entries.append(ProgramDTO(time: Self.jstTimestamp(month: 2, day: 14, hour: 14), title: "Current", path: ""))
-
     let mock = MockHTTPSession()
     let service = ProgramGuideService(apiClient: APIClient(session: mock.session))
     let vm = ProgramListViewModel(
@@ -362,32 +386,38 @@ struct ProgramListViewModelSectioningTests {
       channelID: "page_\(UUID())",
       channelName: "NHK"
     )
+
+    // 40 programs/day × 10 days = 400 total past programs
+    let now = Date()
+    var entries: [ProgramDTO] = []
+    for day in 0..<10 {
+      for slot in 0..<40 {
+        let ts = Int(now.timeIntervalSince1970) - ((day * 86400) + (slot + 1) * 600)
+        entries.append(ProgramDTO(time: ts, title: "P\(day)-\(slot)", path: "/p\(day)_\(slot)"))
+      }
+    }
+    entries.sort { $0.time < $1.time }
+    // Add a current program so it's excluded from past
+    entries.append(ProgramDTO(time: Int(now.timeIntervalSince1970) - 100, title: "Current", path: ""))
     vm.entries = entries
 
     let totalPast = vm.pastByDate.reduce(0) { $0 + $1.programs.count }
-    #expect(totalPast == 250)
+    #expect(totalPast == 400)
 
-    // Initial page
-    let page1Count = vm.displayedPastByDate.reduce(0) { $0 + $1.programs.count }
-    #expect(page1Count == ProgramListViewModel.pageSize)
+    // Initial page should be capped at pageSize (7 days × 40 = 280 > 100)
+    let page1 = vm.displayedPastByDate.reduce(0) { $0 + $1.programs.count }
+    #expect(page1 == ProgramListViewModel.pageSize)
     #expect(vm.hasMorePast)
 
-    // Load second page
+    // Load more
     vm.showMorePast()
-    let page2Count = vm.displayedPastByDate.reduce(0) { $0 + $1.programs.count }
-    #expect(page2Count == ProgramListViewModel.pageSize * 2)
+    let page2 = vm.displayedPastByDate.reduce(0) { $0 + $1.programs.count }
+    #expect(page2 == ProgramListViewModel.pageSize * 2)
     #expect(vm.hasMorePast)
 
-    // Load third page (exhausts data)
-    vm.showMorePast()
-    let page3Count = vm.displayedPastByDate.reduce(0) { $0 + $1.programs.count }
-    #expect(page3Count == 250)
-    #expect(!vm.hasMorePast)
-
-    // Reset
+    // Reset goes back to initial
     vm.resetPastDisplay()
-    let resetCount = vm.displayedPastByDate.reduce(0) { $0 + $1.programs.count }
-    #expect(resetCount == ProgramListViewModel.pageSize)
-    #expect(vm.hasMorePast)
+    let reset = vm.displayedPastByDate.reduce(0) { $0 + $1.programs.count }
+    #expect(reset == ProgramListViewModel.pageSize)
   }
 }
