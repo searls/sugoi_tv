@@ -173,14 +173,18 @@ public struct ProgramListView: View {
     playingProgramID: String? = nil,
     onPlayLive: @escaping () -> Void,
     onPlayVOD: @escaping (ProgramDTO) -> Void,
-    focusTrigger: Bool = false
+    focusTrigger: Bool = false,
+    onBack: (() -> Void)? = nil
   ) {
     self.viewModel = viewModel
     self.playingProgramID = playingProgramID
     self.onPlayLive = onPlayLive
     self.onPlayVOD = onPlayVOD
     self.focusTrigger = focusTrigger
+    self.onBack = onBack
   }
+
+  var onBack: (() -> Void)?
 
   public var body: some View {
     Group {
@@ -199,13 +203,13 @@ public struct ProgramListView: View {
       }
     }
     .task { await viewModel.loadPrograms() }
-    .navigationTitle(viewModel.channelName)
   }
 
   private var programList: some View {
     List(selection: $selectedProgramID) {
-      nowSection
+      backHeader
       upcomingSection
+      liveSection
       pastSections
     }
     .focused($listFocused)
@@ -229,12 +233,27 @@ public struct ProgramListView: View {
     }
   }
 
-  // MARK: - Now section
+  // MARK: - Back header
 
   @ViewBuilder
-  private var nowSection: some View {
+  private var backHeader: some View {
+    if let onBack {
+      Button(action: onBack) {
+        Label(viewModel.channelName, systemImage: "chevron.backward")
+          .font(.headline)
+      }
+      .buttonStyle(.plain)
+      .listRowSeparator(.hidden)
+      .listRowInsets(EdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8))
+    }
+  }
+
+  // MARK: - Live section
+
+  @ViewBuilder
+  private var liveSection: some View {
     if let current = viewModel.liveProgram {
-      Section("Now") {
+      Section("Live") {
         ProgramRow(entry: current, isLive: true, isPlaying: playingProgramID == nil)
           .listRowBackground(playingProgramID == nil ? Color.accentColor.opacity(0.15) : nil)
           .simultaneousGesture(TapGesture().onEnded { onPlayLive() })
@@ -297,17 +316,18 @@ struct ProgramRow: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 2) {
       HStack(spacing: 4) {
+        Text(Self.jstFormatter.string(from: Date(timeIntervalSince1970: TimeInterval(entry.time))))
+          .font(.caption.monospacedDigit())
+          .foregroundStyle(isLive ? .red : .secondary)
         if isLive {
           Circle().fill(.red).frame(width: 6, height: 6)
         }
         if isPlaying {
-          Image(systemName: "speaker.fill")
+          Image(systemName: "speaker.wave.2.fill")
             .font(.caption2)
             .foregroundStyle(.tint)
+            .symbolEffect(.variableColor.iterative, isActive: true)
         }
-        Text(Self.jstFormatter.string(from: Date(timeIntervalSince1970: TimeInterval(entry.time))))
-          .font(.caption.monospacedDigit())
-          .foregroundStyle(isLive ? .red : .secondary)
       }
 
       Text(entry.title)

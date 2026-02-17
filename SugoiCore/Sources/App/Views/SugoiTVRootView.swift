@@ -351,21 +351,6 @@ struct AuthenticatedContainer: View {
       sidebarContent
         .focused($sidebarFocused)
         .navigationSplitViewColumnWidth(min: 220, ideal: 280, max: 360)
-        // FB21962656: macOS NavigationStack sidebar bug — delete when resolved
-        #if os(macOS)
-        .toolbar {
-          ToolbarItem(placement: .navigation) {
-            if controller.sidebarPath.last != nil {
-              Button {
-                channelSelection = controller.selectedChannel?.id
-                withAnimation { controller.sidebarPath = [] }
-              } label: {
-                Label("Channels", systemImage: "chevron.backward")
-              }
-            }
-          }
-        }
-        #endif
     } detail: {
       ZStack(alignment: .topLeading) {
         PlayerView(
@@ -689,7 +674,11 @@ struct AuthenticatedContainer: View {
       onPlayVOD: { program in
         controller.playVOD(program: program, channelName: channel.name)
       },
-      focusTrigger: programListFocusTrigger
+      focusTrigger: programListFocusTrigger,
+      onBack: {
+        channelSelection = controller.selectedChannel?.id
+        withAnimation { controller.sidebarPath = [] }
+      }
     )
   }
 
