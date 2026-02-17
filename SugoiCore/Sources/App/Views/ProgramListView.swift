@@ -238,13 +238,22 @@ public struct ProgramListView: View {
   @ViewBuilder
   private var backHeader: some View {
     if let onBack {
-      Button(action: onBack) {
-        Label(viewModel.channelName, systemImage: "chevron.backward")
-          .font(.headline)
+      HStack(spacing: 12) {
+        Button(action: onBack) {
+          Image(systemName: "chevron.backward")
+            .font(.body.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .frame(width: 32, height: 32)
+            .background(.fill.tertiary, in: Circle())
+        }
+        .buttonStyle(.plain)
+
+        Text(viewModel.channelName)
+          .font(.title2.bold())
       }
-      .buttonStyle(.plain)
       .listRowSeparator(.hidden)
-      .listRowInsets(EdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8))
+      .listRowBackground(Color.clear)
+      .listRowInsets(EdgeInsets(top: 8, leading: 8, bottom: 8, trailing: 8))
     }
   }
 
