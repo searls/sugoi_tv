@@ -166,7 +166,6 @@ public struct ProgramListView: View {
   var focusTrigger: Bool = false
 
   @State private var selectedProgramID: String?
-  @State private var scrollTarget: String?
   @FocusState private var listFocused: Bool
 
   public init(
@@ -223,8 +222,6 @@ public struct ProgramListView: View {
     .focused($listFocused)
     .focusEffectDisabled()
     .listStyle(.sidebar)
-    .defaultScrollAnchor(.center)
-    .scrollPosition(id: $scrollTarget, anchor: .center)
     .onKeyPress(.return) {
       guard let id = selectedProgramID else { return .ignored }
       if id == viewModel.liveProgram?.id {
@@ -239,24 +236,26 @@ public struct ProgramListView: View {
       return .ignored
     }
     .onAppear {
-      selectAndScroll()
+      selectPlaying()
     }
     .onChange(of: focusTrigger) { _, _ in
-      selectAndScroll()
+      selectPlaying()
     }
     .onChange(of: viewModel.liveProgram?.id) { _, _ in
       if selectedProgramID == nil {
-        selectAndScroll()
+        selectPlaying()
       }
     }
   }
 
-  private func selectAndScroll() {
+  private func selectPlaying() {
     if let target = playingOrLiveID {
       selectedProgramID = target
-      scrollTarget = target
     }
-    listFocused = true
+    // Defer focus — the List may not be ready to accept focus during sidebar animation
+    DispatchQueue.main.async {
+      listFocused = true
+    }
   }
 
   // MARK: - Back header
