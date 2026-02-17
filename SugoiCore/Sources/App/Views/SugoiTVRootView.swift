@@ -432,13 +432,11 @@ struct AuthenticatedContainer: View {
     .onKeyPress(.escape) {
       if !controller.sidebarPath.isEmpty {
         // Program list → back to channel list
+        channelSelection = controller.selectedChannel?.id
         withAnimation { controller.sidebarPath = [] }
-        // Delay selection until channel list re-renders after content swap
-        Task { @MainActor in
-          await Task.yield()
-          channelSelection = controller.selectedChannel?.id
-          sidebarFocused = true
-        }
+        // Don't set sidebarFocused here — channelListContent.onAppear handles it.
+        // Setting it synchronously is a no-op (already true from program list focus)
+        // and prevents the deferred transition in onAppear from firing.
         return .handled
       } else if columnVisibility != .detailOnly {
         // Channel list → hide sidebar
@@ -614,8 +612,14 @@ struct AuthenticatedContainer: View {
       ScrollViewReader { proxy in
         channelListList
           .onAppear {
-            sidebarFocused = true
             scrollToSelected(proxy: proxy)
+            // Defer focus to next run loop — onAppear fires during the
+            // transition animation before the view is fully mounted.
+            // A synchronous set is a no-op when sidebarFocused is already
+            // true (e.g. returning from program list via escape/back button).
+            Task { @MainActor in
+              sidebarFocused = true
+            }
           }
           .onChange(of: controller.selectedChannel?.id) { _, _ in
             // Delay: selectedChannel changes in .task after onAppear;

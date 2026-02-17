@@ -229,18 +229,28 @@ public struct ProgramListView: View {
         return .ignored
       }
       .onAppear {
-        // Wait for List to lay out rows before scrolling
-        Task {
-          try? await Task.sleep(for: .milliseconds(200))
-          let target = playingProgramID ?? viewModel.liveProgram?.id
-          if let target {
-            selectedProgramID = target
-            proxy.scrollTo(target, anchor: .top)
-          }
-          listFocused = true
+        applySelection(proxy: proxy)
+      }
+      .onChange(of: viewModel.liveProgram?.id) { _, _ in
+        // Programs loaded from network after view appeared — retry selection
+        if selectedProgramID == nil {
+          applySelection(proxy: proxy)
         }
       }
     }
+  }
+
+  private func applySelection(proxy: ScrollViewProxy) {
+    let target = playingProgramID ?? viewModel.liveProgram?.id
+    if let target {
+      selectedProgramID = target
+      // Scroll after layout settles
+      Task {
+        try? await Task.sleep(for: .milliseconds(200))
+        proxy.scrollTo(target, anchor: .top)
+      }
+    }
+    listFocused = true
   }
 
   // MARK: - Now section
