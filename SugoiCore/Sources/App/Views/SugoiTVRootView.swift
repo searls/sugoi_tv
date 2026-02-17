@@ -338,8 +338,8 @@ struct AuthenticatedContainer: View {
   @Environment(\.horizontalSizeClass) private var sizeClass
   @FocusState private var sidebarFocused: Bool
   @FocusState private var channelListFocused: Bool
+  @FocusState private var programListFocused: Bool
   @State private var channelSelection: String?
-  @State private var programListFocusTrigger = false
   #if os(macOS)
   @Environment(\.openSettings) private var openSettings
   #endif
@@ -439,7 +439,7 @@ struct AuthenticatedContainer: View {
           if controller.sidebarPath.isEmpty {
             focusChannelList()
           } else {
-            programListFocusTrigger.toggle()
+            focusProgramList()
           }
         }
       }
@@ -532,6 +532,13 @@ struct AuthenticatedContainer: View {
     channelListFocused = false
     Task { @MainActor in
       channelListFocused = true
+    }
+  }
+
+  private func focusProgramList() {
+    programListFocused = false
+    Task { @MainActor in
+      programListFocused = true
     }
   }
 
@@ -679,7 +686,7 @@ struct AuthenticatedContainer: View {
       onPlayVOD: { program in
         controller.playVOD(program: program, channelName: channel.name)
       },
-      focusTrigger: programListFocusTrigger,
+      focusBinding: $programListFocused,
       onBack: {
         channelSelection = controller.selectedChannel?.id
         withAnimation { controller.sidebarPath = [] }

@@ -224,18 +224,17 @@ public struct ProgramListView: View {
   var playingProgramID: String?
   var onPlayLive: () -> Void
   var onPlayVOD: (ProgramDTO) -> Void
-  /// Toggle this from the parent to request focus on the program list.
-  var focusTrigger: Bool = false
+  /// Focus binding owned by the parent — when non-nil, `.focused()` is applied to the List.
+  var focusBinding: FocusState<Bool>.Binding?
 
   @State private var selectedProgramID: String?
-  @FocusState private var listFocused: Bool
 
   public init(
     viewModel: ProgramListViewModel,
     playingProgramID: String? = nil,
     onPlayLive: @escaping () -> Void,
     onPlayVOD: @escaping (ProgramDTO) -> Void,
-    focusTrigger: Bool = false,
+    focusBinding: FocusState<Bool>.Binding? = nil,
     onBack: (() -> Void)? = nil,
     channelDescription: String? = nil
   ) {
@@ -243,7 +242,7 @@ public struct ProgramListView: View {
     self.playingProgramID = playingProgramID
     self.onPlayLive = onPlayLive
     self.onPlayVOD = onPlayVOD
-    self.focusTrigger = focusTrigger
+    self.focusBinding = focusBinding
     self.onBack = onBack
     self.channelDescription = channelDescription
   }
@@ -284,7 +283,7 @@ public struct ProgramListView: View {
         liveSection
         pastSections
       }
-      .focused($listFocused)
+      .modifier(OptionalFocusModifier(binding: focusBinding))
       .focusEffectDisabled()
       .listStyle(.sidebar)
       .onKeyPress(.return) {
@@ -303,9 +302,6 @@ public struct ProgramListView: View {
       .onAppear {
         selectAndScroll(proxy: proxy)
       }
-      .onChange(of: focusTrigger) { _, _ in
-        selectAndScroll(proxy: proxy)
-      }
       .onChange(of: viewModel.liveProgram?.id) { _, _ in
         if selectedProgramID == nil {
           selectAndScroll(proxy: proxy)
@@ -321,10 +317,6 @@ public struct ProgramListView: View {
         await Task.yield()
         proxy.scrollTo(target, anchor: .center)
       }
-    }
-    // Defer focus — the List may not be ready to accept focus during sidebar animation
-    DispatchQueue.main.async {
-      listFocused = true
     }
   }
 
@@ -412,6 +404,21 @@ public struct ProgramListView: View {
         .frame(maxWidth: .infinity)
         .listRowSeparator(.hidden)
         .onAppear { viewModel.showMorePast() }
+    }
+  }
+}
+
+// MARK: - Optional focus modifier
+
+/// Applies `.focused()` when a binding is provided; no-op otherwise (previews, standalone use).
+private struct OptionalFocusModifier: ViewModifier {
+  var binding: FocusState<Bool>.Binding?
+
+  func body(content: Content) -> some View {
+    if let binding {
+      content.focused(binding)
+    } else {
+      content
     }
   }
 }
