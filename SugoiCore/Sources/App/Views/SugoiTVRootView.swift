@@ -125,19 +125,23 @@ final class ChannelPlaybackController {
     channelListVM.loadCachedChannels()
   }
 
-  func loadAndAutoSelect() async {
-    // Auto-select from cache immediately if available
+  /// Select a channel from cached data. Returns immediately.
+  func selectFromCache() {
     autoSelectChannel()
+  }
 
-    // Fetch fresh channels in background
+  /// Fetch fresh channels from network and re-check selection if needed.
+  func refreshChannelList() async {
     await channelListVM.loadChannels()
-
-    // Re-check selection: update if we had no selection, or if the cached
-    // channel disappeared from the fresh list
     let allChannels = channelListVM.channelGroups.flatMap(\.channels)
     if selectedChannel == nil || !allChannels.contains(where: { $0.id == selectedChannel?.id }) {
       autoSelectChannel()
     }
+  }
+
+  func loadAndAutoSelect() async {
+    selectFromCache()
+    await refreshChannelList()
   }
 
   /// Pick a channel from whatever is currently in channelGroups.
@@ -376,29 +380,15 @@ struct AuthenticatedContainer: View {
       }
     }
     .task {
-      await controller.loadAndAutoSelect()
-      guard sizeClass != .compact, let channel = controller.selectedChannel else { return }
-      let decision = LaunchPlayback.decide(
-        isCompact: sizeClass == .compact,
-        lastActiveTimestamp: lastActiveTimestamp,
-        now: Date().timeIntervalSince1970,
-        lastProgramID: controller.lastPlayingProgramID,
-        lastProgramTitle: controller.lastPlayingProgramTitle,
-        lastChannelName: controller.lastPlayingChannelName,
-        lastVODPosition: controller.lastVODPosition
-      )
-      switch decision {
-      case .resumeVOD(let id, let title, let name, let pos):
-        controller.sidebarPath = [channel]
-        let program = ProgramDTO(time: 0, title: title, path: id)
-        controller.playVOD(program: program, channelName: name, resumeFrom: pos)
-      case .playLive:
-        // Stay on channel list — live viewers think in channels, not programs
-        controller.playChannel(channel)
-      case .doNothing:
-        break
-      }
-      sidebarFocused = true
+      // Phase 1: Select from cache and start playback immediately
+      controller.selectFromCache()
+      attemptLaunchPlayback()
+
+      // Phase 2: Refresh channels from network (non-blocking for UI)
+      await controller.refreshChannelList()
+
+      // Phase 3: If cold start (no cache), try playing now that we have data
+      attemptLaunchPlayback()
     }
     .onAppear {
       let show = SidebarPersistence.shouldShowSidebar(
@@ -490,6 +480,35 @@ struct AuthenticatedContainer: View {
         }
       }
     }
+  }
+
+  /// Try to start playback from the current cached selection.
+  /// No-op if already playing or no selection available.
+  private func attemptLaunchPlayback() {
+    guard sizeClass != .compact,
+          controller.playerManager.state == .idle,
+          controller.sidebarPath.isEmpty,
+          let channel = controller.selectedChannel else { return }
+    let decision = LaunchPlayback.decide(
+      isCompact: sizeClass == .compact,
+      lastActiveTimestamp: lastActiveTimestamp,
+      now: Date().timeIntervalSince1970,
+      lastProgramID: controller.lastPlayingProgramID,
+      lastProgramTitle: controller.lastPlayingProgramTitle,
+      lastChannelName: controller.lastPlayingChannelName,
+      lastVODPosition: controller.lastVODPosition
+    )
+    switch decision {
+    case .resumeVOD(let id, let title, let name, let pos):
+      controller.sidebarPath = [channel]
+      let program = ProgramDTO(time: 0, title: title, path: id)
+      controller.playVOD(program: program, channelName: name, resumeFrom: pos)
+    case .playLive:
+      controller.playChannel(channel)
+    case .doNothing:
+      break
+    }
+    sidebarFocused = true
   }
 
   private var sidebarContent: some View {

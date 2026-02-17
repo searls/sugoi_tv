@@ -12,10 +12,16 @@ public struct DateSection: Sendable, Equatable {
 @MainActor
 @Observable
 public final class ProgramListViewModel {
-  var entries: [ProgramDTO] = []
+  var entries: [ProgramDTO] = [] {
+    didSet { recomputeDerivedState() }
+  }
   var isLoading: Bool = false
   var errorMessage: String?
   var channelName: String = ""
+
+  private(set) var liveProgram: ProgramDTO?
+  private(set) var upcomingPrograms: [ProgramDTO] = []
+  private(set) var pastByDate: [DateSection] = []
 
   private let programGuideService: ProgramGuideService
   private let config: ProductConfig
@@ -31,6 +37,7 @@ public final class ProgramListViewModel {
     self.channelName = channelName
     self.defaults = defaults
     loadCachedPrograms()
+    recomputeDerivedState()
   }
 
   private func loadCachedPrograms() {
@@ -40,21 +47,18 @@ public final class ProgramListViewModel {
     entries = cached
   }
 
-  private func cachePrograms(_ programs: [ProgramDTO]) {
-    guard let data = try? JSONEncoder().encode(programs) else { return }
+  private func cachePrograms(_ programs: [ProgramDTO]) async {
+    let data = await Task.detached {
+      try? JSONEncoder().encode(programs)
+    }.value
+    guard let data else { return }
     defaults.set(data, forKey: cacheKey)
   }
 
-  var liveProgram: ProgramDTO? {
-    ProgramGuideService.liveProgram(in: entries)
-  }
-
-  var upcomingPrograms: [ProgramDTO] {
-    ProgramGuideService.upcomingPrograms(in: entries, limit: 5)
-  }
-
-  var pastByDate: [DateSection] {
-    Self.groupPastByDate(entries: entries, current: liveProgram)
+  private func recomputeDerivedState() {
+    liveProgram = ProgramGuideService.liveProgram(in: entries)
+    upcomingPrograms = ProgramGuideService.upcomingPrograms(in: entries, limit: 5)
+    pastByDate = Self.groupPastByDate(entries: entries, current: liveProgram)
   }
 
   #if DEBUG
@@ -78,7 +82,7 @@ public final class ProgramListViewModel {
     do {
       let fresh = try await programGuideService.fetchPrograms(config: config, channelID: channelID)
       entries = fresh
-      cachePrograms(fresh)
+      await cachePrograms(fresh)
     } catch {
       if entries.isEmpty {
         errorMessage = "Failed to load program guide."

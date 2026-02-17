@@ -224,6 +224,109 @@ struct ProgramListViewModelTests {
   }
 }
 
+// MARK: - Derived state tests
+
+@Suite("ProgramListViewModel derived state")
+struct ProgramListViewModelDerivedStateTests {
+  static var testConfig: ProductConfig {
+    ProgramListViewModelTests.testConfig
+  }
+
+  @Test("Setting entries updates liveProgram")
+  @MainActor
+  func entriesUpdateLiveProgram() {
+    let now = Int(Date().timeIntervalSince1970)
+    let mock = MockHTTPSession()
+    let service = ProgramGuideService(apiClient: APIClient(session: mock.session))
+    let vm = ProgramListViewModel(
+      programGuideService: service, config: Self.testConfig,
+      channelID: "CH1", channelName: "NHK",
+      defaults: ProgramListViewModelTests.ephemeralDefaults()
+    )
+
+    #expect(vm.liveProgram == nil)
+
+    vm.entries = [
+      ProgramDTO(time: now - 100, title: "Current", path: ""),
+      ProgramDTO(time: now + 3600, title: "Future", path: ""),
+    ]
+
+    #expect(vm.liveProgram?.title == "Current")
+  }
+
+  @Test("Setting entries updates upcomingPrograms")
+  @MainActor
+  func entriesUpdateUpcoming() {
+    let now = Int(Date().timeIntervalSince1970)
+    let mock = MockHTTPSession()
+    let service = ProgramGuideService(apiClient: APIClient(session: mock.session))
+    let vm = ProgramListViewModel(
+      programGuideService: service, config: Self.testConfig,
+      channelID: "CH1", channelName: "NHK",
+      defaults: ProgramListViewModelTests.ephemeralDefaults()
+    )
+
+    vm.entries = [
+      ProgramDTO(time: now - 100, title: "Current", path: ""),
+      ProgramDTO(time: now + 1800, title: "Next", path: ""),
+      ProgramDTO(time: now + 3600, title: "Later", path: ""),
+    ]
+
+    #expect(vm.upcomingPrograms.count == 2)
+    #expect(vm.upcomingPrograms[0].title == "Next")
+    #expect(vm.upcomingPrograms[1].title == "Later")
+  }
+
+  @Test("Setting entries updates pastByDate")
+  @MainActor
+  func entriesUpdatePastByDate() {
+    let now = Int(Date().timeIntervalSince1970)
+    let mock = MockHTTPSession()
+    let service = ProgramGuideService(apiClient: APIClient(session: mock.session))
+    let vm = ProgramListViewModel(
+      programGuideService: service, config: Self.testConfig,
+      channelID: "CH1", channelName: "NHK",
+      defaults: ProgramListViewModelTests.ephemeralDefaults()
+    )
+
+    vm.entries = [
+      ProgramDTO(time: now - 7200, title: "Earlier", path: "/a"),
+      ProgramDTO(time: now - 100, title: "Current", path: ""),
+      ProgramDTO(time: now + 3600, title: "Future", path: ""),
+    ]
+
+    #expect(!vm.pastByDate.isEmpty)
+    let allPast = vm.pastByDate.flatMap(\.programs)
+    #expect(allPast.contains(where: { $0.title == "Earlier" }))
+    // Current program is excluded from past
+    #expect(!allPast.contains(where: { $0.title == "Current" }))
+  }
+
+  @Test("Clearing entries clears derived state")
+  @MainActor
+  func clearingEntriesClearsDerived() {
+    let now = Int(Date().timeIntervalSince1970)
+    let mock = MockHTTPSession()
+    let service = ProgramGuideService(apiClient: APIClient(session: mock.session))
+    let vm = ProgramListViewModel(
+      programGuideService: service, config: Self.testConfig,
+      channelID: "CH1", channelName: "NHK",
+      defaults: ProgramListViewModelTests.ephemeralDefaults()
+    )
+
+    vm.entries = [
+      ProgramDTO(time: now - 100, title: "Current", path: ""),
+      ProgramDTO(time: now + 1800, title: "Next", path: ""),
+    ]
+    #expect(vm.liveProgram != nil)
+
+    vm.entries = []
+    #expect(vm.liveProgram == nil)
+    #expect(vm.upcomingPrograms.isEmpty)
+    #expect(vm.pastByDate.isEmpty)
+  }
+}
+
 // MARK: - Sectioning logic tests
 
 @Suite("ProgramListViewModel.groupPastByDate")

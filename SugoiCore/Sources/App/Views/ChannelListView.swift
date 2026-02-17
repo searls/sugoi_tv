@@ -28,8 +28,11 @@ public final class ChannelListViewModel {
   }
 
   /// Persist the current flat channel list to UserDefaults after a successful fetch.
-  private func cacheChannels(_ channels: [ChannelDTO]) {
-    guard let data = try? JSONEncoder().encode(channels) else { return }
+  private func cacheChannels(_ channels: [ChannelDTO]) async {
+    let data = await Task.detached {
+      try? JSONEncoder().encode(channels)
+    }.value
+    guard let data else { return }
     defaults.set(data, forKey: cacheKey)
   }
 
@@ -51,7 +54,7 @@ public final class ChannelListViewModel {
     do {
       let channels = try await channelService.fetchChannels(config: config)
       channelGroups = ChannelService.groupByCategory(channels)
-      cacheChannels(channels)
+      await cacheChannels(channels)
     } catch {
       errorMessage = "Failed to load channels."
     }

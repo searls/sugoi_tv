@@ -240,6 +240,79 @@ struct ChannelPlaybackControllerCacheTests {
     #expect(controller.selectedChannel == nil)
     #expect(controller.channelListVM.channelGroups.isEmpty)
   }
+
+  @Test("selectFromCache selects channel without awaiting network")
+  func selectFromCacheImmediate() throws {
+    let defaults = seededDefaults()
+    let controller = try makeController(channelsJSON: Self.channelsJSON, defaults: defaults)
+    controller.lastChannelId = "CH2"
+
+    // selectFromCache is synchronous — no await needed
+    controller.selectFromCache()
+
+    #expect(controller.selectedChannel?.id == "CH2")
+  }
+
+  @Test("selectFromCache is no-op with empty cache")
+  func selectFromCacheEmpty() throws {
+    let emptyDefaults = UserDefaults(suiteName: "test.cache.empty2.\(UUID().uuidString)")!
+    let controller = try makeController(channelsJSON: Self.channelsJSON, defaults: emptyDefaults)
+
+    controller.selectFromCache()
+
+    #expect(controller.selectedChannel == nil)
+  }
+
+  @Test("refreshChannelList fetches and updates selection when cache was empty")
+  func refreshAfterEmptyCache() async throws {
+    let emptyDefaults = UserDefaults(suiteName: "test.cache.empty3.\(UUID().uuidString)")!
+    let controller = try makeController(channelsJSON: Self.channelsJSON, defaults: emptyDefaults)
+    controller.lastChannelId = "CH3"
+
+    // No selection from empty cache
+    controller.selectFromCache()
+    #expect(controller.selectedChannel == nil)
+
+    // Network fetch provides channels, re-selects
+    await controller.refreshChannelList()
+    #expect(controller.selectedChannel?.id == "CH3")
+  }
+
+  @Test("selectFromCache + refreshChannelList matches loadAndAutoSelect behavior")
+  func splitMatchesUnified() async throws {
+    let defaults1 = seededDefaults()
+    let defaults2 = seededDefaults()
+    let controller1 = try makeController(channelsJSON: Self.channelsJSON, defaults: defaults1)
+    let controller2 = try makeController(channelsJSON: Self.channelsJSON, defaults: defaults2)
+    controller1.lastChannelId = "CH2"
+    controller2.lastChannelId = "CH2"
+
+    // Unified path
+    await controller1.loadAndAutoSelect()
+
+    // Split path
+    controller2.selectFromCache()
+    await controller2.refreshChannelList()
+
+    #expect(controller1.selectedChannel?.id == controller2.selectedChannel?.id)
+  }
+
+  @Test("playChannel after selectFromCache moves player out of idle — guards against double-play")
+  func playChannelExitsIdle() throws {
+    let defaults = seededDefaults()
+    let controller = try makeController(channelsJSON: Self.channelsJSON, defaults: defaults)
+    controller.lastChannelId = "CH1"
+
+    controller.selectFromCache()
+    #expect(controller.playerManager.state == .idle)
+
+    // First play — transitions out of idle
+    controller.playChannel(controller.selectedChannel!)
+    #expect(controller.playerManager.state != .idle)
+
+    // A second playChannel would restart the stream; the view guards
+    // against this by checking playerManager.state == .idle
+  }
 }
 
 @Suite("ChannelPlaybackController.shouldCollapseSidebarOnTap")
