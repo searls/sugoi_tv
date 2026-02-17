@@ -218,7 +218,10 @@ public struct ProgramListView: View {
         programList
       }
     }
-    .task { await viewModel.loadPrograms() }
+    .task {
+      NSLog("⏱ ProgramList: %d entries, %d sections", viewModel.entries.count, viewModel.pastByDate.count)
+      await viewModel.loadPrograms()
+    }
   }
 
   private var playingOrLiveID: String? {

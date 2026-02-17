@@ -389,6 +389,7 @@ struct AuthenticatedContainer: View {
       attemptLaunchPlayback()
     }
     .onAppear {
+      FrameMonitor.shared.start()
       let show = SidebarPersistence.shouldShowSidebar(
         wasSidebarVisible: sidebarVisible,
         lastActiveTimestamp: lastActiveTimestamp,
@@ -427,6 +428,7 @@ struct AuthenticatedContainer: View {
       return .handled
     }
     .onChange(of: columnVisibility) { _, newValue in
+      FrameMonitor.shared.setContext(newValue == .detailOnly ? "sidebar-hide" : "sidebar-show")
       let visible = (newValue != .detailOnly)
       if visible != sidebarVisible {
         sidebarVisible = visible
@@ -437,6 +439,11 @@ struct AuthenticatedContainer: View {
             programListFocusTrigger.toggle()
           }
         }
+      }
+      // Reset context after animation settles
+      Task { @MainActor in
+        try? await Task.sleep(for: .milliseconds(500))
+        FrameMonitor.shared.setContext("playback")
       }
     }
     .onChange(of: scenePhase) { _, newPhase in
