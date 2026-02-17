@@ -1,5 +1,11 @@
 import SwiftUI
 
+// MARK: - Sidebar toggle notification
+
+public extension Notification.Name {
+  static let toggleSidebar = Notification.Name("toggleSidebar")
+}
+
 public struct SugoiTVRootView: View {
   var appState: AppState
 
@@ -424,20 +430,37 @@ struct AuthenticatedContainer: View {
       return .handled
     }
     .onKeyPress(.escape) {
-      guard !controller.sidebarPath.isEmpty else { return .ignored }
-      withAnimation { controller.sidebarPath = [] }
-      // Delay selection until channel list re-renders after content swap
-      Task { @MainActor in
-        await Task.yield()
-        channelSelection = controller.selectedChannel?.id
-        sidebarFocused = true
+      if !controller.sidebarPath.isEmpty {
+        // Program list → back to channel list
+        withAnimation { controller.sidebarPath = [] }
+        // Delay selection until channel list re-renders after content swap
+        Task { @MainActor in
+          await Task.yield()
+          channelSelection = controller.selectedChannel?.id
+          sidebarFocused = true
+        }
+        return .handled
+      } else if columnVisibility != .detailOnly {
+        // Channel list → hide sidebar
+        withAnimation { columnVisibility = .detailOnly }
+        return .handled
       }
-      return .handled
+      return .ignored
     }
     .onKeyPress(.space) {
       guard controller.playerManager.player != nil else { return .ignored }
       controller.playerManager.togglePlayPause()
       return .handled
+    }
+    .onReceive(NotificationCenter.default.publisher(for: .toggleSidebar)) { _ in
+      withAnimation {
+        if columnVisibility == .detailOnly {
+          columnVisibility = .doubleColumn
+          sidebarFocused = true
+        } else {
+          columnVisibility = .detailOnly
+        }
+      }
     }
     .onChange(of: columnVisibility) { _, newValue in
       sidebarVisible = (newValue != .detailOnly)
