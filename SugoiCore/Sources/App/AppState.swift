@@ -15,6 +15,7 @@ public final class AppState {
   public var isRestoringSession: Bool = true
 
   public init() {
+    DiskCache.migrateFromUserDefaults()
     let keychain = KeychainService()
     let apiClient = APIClient()
     self.keychain = keychain

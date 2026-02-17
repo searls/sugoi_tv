@@ -10,30 +10,23 @@ public final class ChannelListViewModel {
 
   private let channelService: ChannelService
   let config: ProductConfig
-  private let defaults: UserDefaults
   private let cacheKey = "cachedChannels"
 
-  public init(channelService: ChannelService, config: ProductConfig, defaults: UserDefaults = .standard) {
+  public init(channelService: ChannelService, config: ProductConfig) {
     self.channelService = channelService
     self.config = config
-    self.defaults = defaults
   }
 
-  /// Populate channelGroups from UserDefaults cache (synchronous, no network).
+  /// Populate channelGroups from disk cache (synchronous, no network).
   func loadCachedChannels() {
-    guard let data = defaults.data(forKey: cacheKey),
-          let channels = try? JSONDecoder().decode([ChannelDTO].self, from: data),
+    guard let channels = DiskCache.load(key: cacheKey, as: [ChannelDTO].self),
           !channels.isEmpty else { return }
     channelGroups = ChannelService.groupByCategory(channels)
   }
 
-  /// Persist the current flat channel list to UserDefaults after a successful fetch.
+  /// Persist the current flat channel list to disk cache after a successful fetch.
   private func cacheChannels(_ channels: [ChannelDTO]) async {
-    let data = await Task.detached {
-      try? JSONEncoder().encode(channels)
-    }.value
-    guard let data else { return }
-    defaults.set(data, forKey: cacheKey)
+    await DiskCache.save(key: cacheKey, value: channels)
   }
 
   var filteredGroups: [(category: String, channels: [ChannelDTO])] {

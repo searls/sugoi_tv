@@ -61,7 +61,7 @@ struct ChannelPlaybackControllerAutoSelectTests {
     """
   }
 
-  private func makeController(channelsJSON: String, defaults: UserDefaults? = nil) throws -> ChannelPlaybackController {
+  private func makeController(channelsJSON: String) throws -> ChannelPlaybackController {
     let mock = MockHTTPSession()
     mock.requestHandler = { _ in
       let response = HTTPURLResponse(
@@ -79,8 +79,7 @@ struct ChannelPlaybackControllerAutoSelectTests {
     let config = try loginResponse.parseProductConfig()
     let session = AuthService.Session(from: loginResponse, config: config)
 
-    let isolatedDefaults = defaults ?? UserDefaults(suiteName: "test.autoselect.\(UUID().uuidString)")!
-    return ChannelPlaybackController(appState: appState, session: session, defaults: isolatedDefaults)
+    return ChannelPlaybackController(appState: appState, session: session)
   }
 
   @Test("Selects last-used channel when lastChannelId matches")
@@ -142,179 +141,6 @@ struct ChannelPlaybackControllerAutoSelectTests {
   }
 }
 
-@Suite("ChannelPlaybackController.loadAndAutoSelect with cache")
-@MainActor
-struct ChannelPlaybackControllerCacheTests {
-  nonisolated static let channelsJSON = ChannelPlaybackControllerAutoSelectTests.channelsJSON
-  nonisolated static let testLoginJSON = ChannelPlaybackControllerAutoSelectTests.testLoginJSON
-
-  /// Channels that match channelsJSON, for pre-populating UserDefaults cache.
-  nonisolated static let cachedChannels: [ChannelDTO] = [
-    ChannelDTO(id: "CH1", uid: nil, name: "NHK総合", description: nil, tags: "$LIVE_CAT_関東", no: 1, timeshift: nil, timeshiftLen: nil, epgKeepDays: nil, state: nil, running: 1, playpath: "/nhk", liveType: nil),
-    ChannelDTO(id: "CH2", uid: nil, name: "テレビ朝日", description: nil, tags: "$LIVE_CAT_関東", no: 2, timeshift: nil, timeshiftLen: nil, epgKeepDays: nil, state: nil, running: nil, playpath: "/tvasahi", liveType: nil),
-    ChannelDTO(id: "CH3", uid: nil, name: "MBS毎日放送", description: nil, tags: "$LIVE_CAT_関西", no: 3, timeshift: nil, timeshiftLen: nil, epgKeepDays: nil, state: nil, running: nil, playpath: "/mbs", liveType: nil),
-  ]
-
-  /// Creates an isolated UserDefaults suite pre-seeded with cached channels.
-  private func seededDefaults() -> UserDefaults {
-    let defaults = UserDefaults(suiteName: "test.cache.\(UUID().uuidString)")!
-    let data = try! JSONEncoder().encode(Self.cachedChannels)
-    defaults.set(data, forKey: "cachedChannels")
-    return defaults
-  }
-
-  private func makeController(channelsJSON: String, defaults: UserDefaults) throws -> ChannelPlaybackController {
-    let mock = MockHTTPSession()
-    mock.requestHandler = { _ in
-      let response = HTTPURLResponse(
-        url: URL(string: "http://test.com")!, statusCode: 200, httpVersion: nil, headerFields: nil
-      )!
-      return (response, Data(channelsJSON.utf8))
-    }
-    let client = APIClient(session: mock.session)
-    let auth = AuthService(keychain: MockKeychainService(), apiClient: client)
-    let channels = ChannelService(apiClient: client)
-    let programGuide = ProgramGuideService(apiClient: client)
-    let appState = AppState(apiClient: client, authService: auth, channelService: channels, programGuideService: programGuide)
-
-    let loginResponse = try JSONDecoder().decode(LoginResponse.self, from: Data(Self.testLoginJSON.utf8))
-    let config = try loginResponse.parseProductConfig()
-    let session = AuthService.Session(from: loginResponse, config: config)
-
-    return ChannelPlaybackController(appState: appState, session: session, defaults: defaults)
-  }
-
-  @Test("Init loads cached channels into channelGroups")
-  func initLoadsCachedChannels() throws {
-    let defaults = seededDefaults()
-    let controller = try makeController(channelsJSON: Self.channelsJSON, defaults: defaults)
-
-    #expect(!controller.channelListVM.channelGroups.isEmpty)
-    #expect(controller.channelListVM.channelGroups[0].category == "関東")
-  }
-
-  @Test("Auto-selects last channel from cache before network fetch")
-  func autoSelectsFromCache() async throws {
-    let defaults = seededDefaults()
-    let controller = try makeController(channelsJSON: Self.channelsJSON, defaults: defaults)
-    controller.lastChannelId = "CH2"
-
-    await controller.loadAndAutoSelect()
-
-    #expect(controller.selectedChannel?.id == "CH2")
-  }
-
-  @Test("Auto-selects from cache even when network fails")
-  func autoSelectsFromCacheOnNetworkFailure() async throws {
-    let defaults = seededDefaults()
-
-    let mock = MockHTTPSession()
-    mock.requestHandler = { _ in throw URLError(.notConnectedToInternet) }
-    let client = APIClient(session: mock.session)
-    let auth = AuthService(keychain: MockKeychainService(), apiClient: client)
-    let channels = ChannelService(apiClient: client)
-    let programGuide = ProgramGuideService(apiClient: client)
-    let appState = AppState(apiClient: client, authService: auth, channelService: channels, programGuideService: programGuide)
-
-    let loginResponse = try JSONDecoder().decode(LoginResponse.self, from: Data(Self.testLoginJSON.utf8))
-    let config = try loginResponse.parseProductConfig()
-    let session = AuthService.Session(from: loginResponse, config: config)
-
-    let controller = ChannelPlaybackController(appState: appState, session: session, defaults: defaults)
-    controller.lastChannelId = "CH1"
-
-    await controller.loadAndAutoSelect()
-
-    // Channel selected from cache despite network failure
-    #expect(controller.selectedChannel?.id == "CH1")
-    #expect(!controller.channelListVM.channelGroups.isEmpty)
-  }
-
-  @Test("Empty cache does not select a channel before network fetch")
-  func emptyCacheNoSelection() throws {
-    let emptyDefaults = UserDefaults(suiteName: "test.cache.empty.\(UUID().uuidString)")!
-    let controller = try makeController(channelsJSON: Self.channelsJSON, defaults: emptyDefaults)
-    controller.lastChannelId = "CH1"
-
-    // Before loadAndAutoSelect, no selection from empty cache
-    #expect(controller.selectedChannel == nil)
-    #expect(controller.channelListVM.channelGroups.isEmpty)
-  }
-
-  @Test("selectFromCache selects channel without awaiting network")
-  func selectFromCacheImmediate() throws {
-    let defaults = seededDefaults()
-    let controller = try makeController(channelsJSON: Self.channelsJSON, defaults: defaults)
-    controller.lastChannelId = "CH2"
-
-    // selectFromCache is synchronous — no await needed
-    controller.selectFromCache()
-
-    #expect(controller.selectedChannel?.id == "CH2")
-  }
-
-  @Test("selectFromCache is no-op with empty cache")
-  func selectFromCacheEmpty() throws {
-    let emptyDefaults = UserDefaults(suiteName: "test.cache.empty2.\(UUID().uuidString)")!
-    let controller = try makeController(channelsJSON: Self.channelsJSON, defaults: emptyDefaults)
-
-    controller.selectFromCache()
-
-    #expect(controller.selectedChannel == nil)
-  }
-
-  @Test("refreshChannelList fetches and updates selection when cache was empty")
-  func refreshAfterEmptyCache() async throws {
-    let emptyDefaults = UserDefaults(suiteName: "test.cache.empty3.\(UUID().uuidString)")!
-    let controller = try makeController(channelsJSON: Self.channelsJSON, defaults: emptyDefaults)
-    controller.lastChannelId = "CH3"
-
-    // No selection from empty cache
-    controller.selectFromCache()
-    #expect(controller.selectedChannel == nil)
-
-    // Network fetch provides channels, re-selects
-    await controller.refreshChannelList()
-    #expect(controller.selectedChannel?.id == "CH3")
-  }
-
-  @Test("selectFromCache + refreshChannelList matches loadAndAutoSelect behavior")
-  func splitMatchesUnified() async throws {
-    let defaults1 = seededDefaults()
-    let defaults2 = seededDefaults()
-    let controller1 = try makeController(channelsJSON: Self.channelsJSON, defaults: defaults1)
-    let controller2 = try makeController(channelsJSON: Self.channelsJSON, defaults: defaults2)
-    controller1.lastChannelId = "CH2"
-    controller2.lastChannelId = "CH2"
-
-    // Unified path
-    await controller1.loadAndAutoSelect()
-
-    // Split path
-    controller2.selectFromCache()
-    await controller2.refreshChannelList()
-
-    #expect(controller1.selectedChannel?.id == controller2.selectedChannel?.id)
-  }
-
-  @Test("playChannel after selectFromCache moves player out of idle — guards against double-play")
-  func playChannelExitsIdle() throws {
-    let defaults = seededDefaults()
-    let controller = try makeController(channelsJSON: Self.channelsJSON, defaults: defaults)
-    controller.lastChannelId = "CH1"
-
-    controller.selectFromCache()
-    #expect(controller.playerManager.state == .idle)
-
-    // First play — transitions out of idle
-    controller.playChannel(controller.selectedChannel!)
-    #expect(controller.playerManager.state != .idle)
-
-    // A second playChannel would restart the stream; the view guards
-    // against this by checking playerManager.state == .idle
-  }
-}
-
 @Suite("ChannelPlaybackController.shouldCollapseSidebarOnTap")
 @MainActor
 struct ChannelPlaybackControllerSidebarCollapseTests {
@@ -344,8 +170,7 @@ struct ChannelPlaybackControllerSidebarCollapseTests {
     let config = try loginResponse.parseProductConfig()
     let session = AuthService.Session(from: loginResponse, config: config)
 
-    let defaults = UserDefaults(suiteName: "test.sidebar.\(UUID().uuidString)")!
-    return ChannelPlaybackController(appState: appState, session: session, defaults: defaults)
+    return ChannelPlaybackController(appState: appState, session: session)
   }
 
   @Test("Allows sidebar collapse when external playback is inactive")
@@ -405,8 +230,7 @@ struct ChannelPlaybackControllerCompactColumnTests {
     let config = try loginResponse.parseProductConfig()
     let session = AuthService.Session(from: loginResponse, config: config)
 
-    let defaults = UserDefaults(suiteName: "test.compact.\(UUID().uuidString)")!
-    return ChannelPlaybackController(appState: appState, session: session, defaults: defaults)
+    return ChannelPlaybackController(appState: appState, session: session)
   }
 
   @Test("Starts on sidebar column for compact layouts")
@@ -457,8 +281,7 @@ struct ChannelPlaybackControllerPlayVODTests {
     let config = try loginResponse.parseProductConfig()
     let session = AuthService.Session(from: loginResponse, config: config)
 
-    let defaults = UserDefaults(suiteName: "test.vod.\(UUID().uuidString)")!
-    return ChannelPlaybackController(appState: appState, session: session, defaults: defaults)
+    return ChannelPlaybackController(appState: appState, session: session)
   }
 
   @Test("playVOD loads VOD stream and switches to detail column")
@@ -555,8 +378,7 @@ struct ChannelPlaybackControllerReplayTests {
     let config = try loginResponse.parseProductConfig()
     let session = AuthService.Session(from: loginResponse, config: config)
 
-    let defaults = UserDefaults(suiteName: "test.replay.\(UUID().uuidString)")!
-    return ChannelPlaybackController(appState: appState, session: session, defaults: defaults)
+    return ChannelPlaybackController(appState: appState, session: session)
   }
 
   @Test("Replays VOD when VOD was playing")
@@ -675,8 +497,7 @@ struct ChannelPlaybackControllerSidebarPathTests {
     let config = try loginResponse.parseProductConfig()
     let session = AuthService.Session(from: loginResponse, config: config)
 
-    let defaults = UserDefaults(suiteName: "test.sidebar.\(UUID().uuidString)")!
-    return ChannelPlaybackController(appState: appState, session: session, defaults: defaults)
+    return ChannelPlaybackController(appState: appState, session: session)
   }
 
   @Test("sidebarPath starts empty")
@@ -783,8 +604,7 @@ struct PlayChannelProxyFallbackTests {
     let config = try loginResponse.parseProductConfig()
     let session = AuthService.Session(from: loginResponse, config: config)
 
-    let defaults = UserDefaults(suiteName: "test.proxy.\(UUID().uuidString)")!
-    return ChannelPlaybackController(appState: appState, session: session, defaults: defaults)
+    return ChannelPlaybackController(appState: appState, session: session)
   }
 
   @Test("playChannel uses direct URL when proxy is not ready")

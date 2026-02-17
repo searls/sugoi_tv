@@ -25,34 +25,27 @@ public final class ProgramListViewModel {
 
   private let programGuideService: ProgramGuideService
   private let config: ProductConfig
-  private let defaults: UserDefaults
   let channelID: String
 
   private var cacheKey: String { "cachedPrograms_\(channelID)" }
 
-  public init(programGuideService: ProgramGuideService, config: ProductConfig, channelID: String, channelName: String, defaults: UserDefaults = .standard) {
+  public init(programGuideService: ProgramGuideService, config: ProductConfig, channelID: String, channelName: String) {
     self.programGuideService = programGuideService
     self.config = config
     self.channelID = channelID
     self.channelName = channelName
-    self.defaults = defaults
     loadCachedPrograms()
     recomputeDerivedState()
   }
 
   private func loadCachedPrograms() {
-    guard let data = defaults.data(forKey: cacheKey),
-          let cached = try? JSONDecoder().decode([ProgramDTO].self, from: data),
+    guard let cached = DiskCache.load(key: cacheKey, as: [ProgramDTO].self),
           !cached.isEmpty else { return }
     entries = cached
   }
 
   private func cachePrograms(_ programs: [ProgramDTO]) async {
-    let data = await Task.detached {
-      try? JSONEncoder().encode(programs)
-    }.value
-    guard let data else { return }
-    defaults.set(data, forKey: cacheKey)
+    await DiskCache.save(key: cacheKey, value: programs)
   }
 
   private func recomputeDerivedState() {
@@ -67,7 +60,7 @@ public final class ProgramListViewModel {
     let vm = ProgramListViewModel(
       programGuideService: ProgramGuideService(apiClient: _NoOpAPIClient()),
       config: try! JSONDecoder().decode(ProductConfig.self, from: Data(#"{"vms_host":"x","vms_uid":"x","vms_live_cid":"x","vms_referer":"x"}"#.utf8)),
-      channelID: "preview",
+      channelID: "preview_\(UUID().uuidString)",
       channelName: channelName
     )
     vm.entries = entries

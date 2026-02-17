@@ -1,11 +1,5 @@
 import SwiftUI
 
-// MARK: - Sidebar toggle notification
-
-public extension Notification.Name {
-  static let toggleSidebar = Notification.Name("toggleSidebar")
-}
-
 public struct SugoiTVRootView: View {
   var appState: AppState
 
@@ -116,13 +110,12 @@ final class ChannelPlaybackController {
 
   private let programGuideService: ProgramGuideService
 
-  init(appState: AppState, session: AuthService.Session, defaults: UserDefaults = .standard) {
+  init(appState: AppState, session: AuthService.Session) {
     self.session = session
     self.programGuideService = appState.programGuideService
     self.channelListVM = ChannelListViewModel(
       channelService: appState.channelService,
-      config: session.productConfig,
-      defaults: defaults
+      config: session.productConfig
     )
     self.refererProxy = RefererProxy(referer: session.productConfig.vmsReferer)
     refererProxy.start()
@@ -393,11 +386,8 @@ struct AuthenticatedContainer: View {
       .ignoresSafeArea()
       .onTapGesture {
         guard controller.shouldCollapseSidebarOnTap else { return }
-        if sidebarVisible {
-          sidebarVisible = false
-          withAnimation {
-            columnVisibility = .detailOnly
-          }
+        if columnVisibility != .detailOnly {
+          withAnimation { columnVisibility = .detailOnly }
         }
       }
     }
@@ -418,6 +408,7 @@ struct AuthenticatedContainer: View {
         lastActiveTimestamp: lastActiveTimestamp,
         now: Date().timeIntervalSince1970
       )
+      sidebarVisible = show
       columnVisibility = show ? .doubleColumn : .detailOnly
       lastActiveTimestamp = Date().timeIntervalSince1970
     }
@@ -440,9 +431,8 @@ struct AuthenticatedContainer: View {
         // Setting it synchronously is a no-op (already true from program list focus)
         // and prevents the deferred transition in onAppear from firing.
         return .handled
-      } else if sidebarVisible {
+      } else if columnVisibility != .detailOnly {
         // Channel list → hide sidebar
-        sidebarVisible = false
         withAnimation { columnVisibility = .detailOnly }
         return .handled
       }
@@ -453,13 +443,11 @@ struct AuthenticatedContainer: View {
       controller.playerManager.togglePlayPause()
       return .handled
     }
-    .onReceive(NotificationCenter.default.publisher(for: .toggleSidebar)) { _ in
-      sidebarVisible.toggle()
-      withAnimation {
-        columnVisibility = sidebarVisible ? .doubleColumn : .detailOnly
-      }
-      if sidebarVisible {
-        focusChannelList()
+    .onChange(of: columnVisibility) { _, newValue in
+      let visible = (newValue != .detailOnly)
+      if visible != sidebarVisible {
+        sidebarVisible = visible
+        if visible { focusChannelList() }
       }
     }
     .onChange(of: scenePhase) { _, newPhase in

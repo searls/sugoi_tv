@@ -172,19 +172,6 @@ Prioritize unit tests — they're fast and reliable. Views are thin wrappers.
 - NEVER say "ready to push when you are" - YOU must push
 - If push fails, resolve and retry until it succeeds
 
-## Apple Dev Tips
-
-- **Menu bar commands with keyboard shortcut hints**: `@FocusedValue` inside
-  `.commands {}` can result in shortcuts not rendering when the focused value is
-  nil (e.g. before a view appears). Instead, use `@AppStorage` for the label
-  state and `NotificationCenter` for the action. This guarantees the shortcut
-  hint always renders in the menu
-- **Sidebar menu convention**: Use dynamic "Show Sidebar" / "Hide Sidebar"
-  labels, not "Toggle Sidebar". This is the macOS convention, an a11y win for
-  VoiceOver, and lets users assign separate shortcuts to each action via System
-  Settings. Use `CommandGroup(replacing: .sidebar)` to replace the default
-  NavigationSplitView toggle
-
 ## Troubleshooting
 
 Whenever you're having trouble with a SwiftUI view, consider making a #Preview that you can interact with easily using xcode MCP's RenderPreview tool.
