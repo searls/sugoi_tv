@@ -162,7 +162,7 @@ struct ChannelRow: View {
           .font(.body)
           .lineLimit(1)
 
-        if let desc = channel.description, !desc.isEmpty {
+        if let desc = channel.displayDescription, !desc.isEmpty {
           Text(desc)
             .font(.caption)
             .foregroundStyle(.secondary)

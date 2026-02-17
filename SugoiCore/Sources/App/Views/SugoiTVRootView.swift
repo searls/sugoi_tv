@@ -679,7 +679,7 @@ struct AuthenticatedContainer: View {
         channelSelection = controller.selectedChannel?.id
         withAnimation { controller.sidebarPath = [] }
       },
-      channelDescription: channel.description
+      channelDescription: channel.displayDescription
     )
   }
 

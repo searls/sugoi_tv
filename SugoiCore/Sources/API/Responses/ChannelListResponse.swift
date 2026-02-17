@@ -49,4 +49,11 @@ public struct ChannelDTO: Codable, Sendable, Hashable, Identifiable {
     name.replacingOccurrences(of: "[HD]", with: "")
       .trimmingCharacters(in: .whitespaces)
   }
+
+  /// Display description with "[HD]" prefix stripped.
+  public var displayDescription: String? {
+    description?
+      .replacingOccurrences(of: "[HD]", with: "")
+      .trimmingCharacters(in: .whitespaces)
+  }
 }
