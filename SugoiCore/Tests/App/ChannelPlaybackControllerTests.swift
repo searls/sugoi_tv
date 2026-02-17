@@ -526,6 +526,125 @@ struct ChannelPlaybackControllerPlayVODTests {
   }
 }
 
+@Suite("ChannelPlaybackController.replayCurrentStream")
+@MainActor
+struct ChannelPlaybackControllerReplayTests {
+  nonisolated static var testLoginJSON: String {
+    ChannelPlaybackControllerAutoSelectTests.testLoginJSON
+  }
+
+  nonisolated static var channelsJSON: String {
+    ChannelPlaybackControllerAutoSelectTests.channelsJSON
+  }
+
+  private func makeController() throws -> ChannelPlaybackController {
+    let mock = MockHTTPSession()
+    mock.requestHandler = { _ in
+      let response = HTTPURLResponse(
+        url: URL(string: "http://test.com")!, statusCode: 200, httpVersion: nil, headerFields: nil
+      )!
+      return (response, Data(Self.channelsJSON.utf8))
+    }
+    let client = APIClient(session: mock.session)
+    let auth = AuthService(keychain: MockKeychainService(), apiClient: client)
+    let channels = ChannelService(apiClient: client)
+    let programGuide = ProgramGuideService(apiClient: client)
+    let appState = AppState(apiClient: client, authService: auth, channelService: channels, programGuideService: programGuide)
+
+    let loginResponse = try JSONDecoder().decode(LoginResponse.self, from: Data(Self.testLoginJSON.utf8))
+    let config = try loginResponse.parseProductConfig()
+    let session = AuthService.Session(from: loginResponse, config: config)
+
+    let defaults = UserDefaults(suiteName: "test.replay.\(UUID().uuidString)")!
+    return ChannelPlaybackController(appState: appState, session: session, defaults: defaults)
+  }
+
+  @Test("Replays VOD when VOD was playing")
+  func replaysVOD() throws {
+    let controller = try makeController()
+    let program = ProgramDTO(time: 1000, title: "Past Show", path: "/query/past_show")
+    controller.playVOD(program: program, channelName: "NHK総合")
+
+    #expect(controller.playingProgramID == "/query/past_show")
+
+    controller.replayCurrentStream()
+
+    // Must still be VOD, not switched to live
+    #expect(controller.playingProgramID == "/query/past_show")
+    #expect(controller.lastPlayingProgramID == "/query/past_show")
+    #expect(controller.lastPlayingProgramTitle == "Past Show")
+    #expect(controller.lastPlayingChannelName == "NHK総合")
+  }
+
+  @Test("Replays live when live was playing via sidebarPath")
+  func replaysLiveFromSidebarPath() throws {
+    let controller = try makeController()
+    let channel = ChannelDTO(
+      id: "CH1", uid: nil, name: "NHK総合", description: nil, tags: nil,
+      no: 1, timeshift: nil, timeshiftLen: nil, epgKeepDays: nil, state: nil,
+      running: 1, playpath: "/query/s/nhk", liveType: nil
+    )
+    controller.sidebarPath = [channel]
+    controller.playChannel(channel)
+
+    #expect(controller.playingProgramID == nil)
+
+    controller.replayCurrentStream()
+
+    #expect(controller.playingProgramID == nil)
+    #expect(controller.lastPlayingProgramID == "")
+  }
+
+  @Test("Replays live using selectedChannel when sidebarPath is empty")
+  func replaysLiveFromSelectedChannel() throws {
+    let controller = try makeController()
+    let channel = ChannelDTO(
+      id: "CH1", uid: nil, name: "NHK総合", description: nil, tags: nil,
+      no: 1, timeshift: nil, timeshiftLen: nil, epgKeepDays: nil, state: nil,
+      running: 1, playpath: "/query/s/nhk", liveType: nil
+    )
+    controller.selectedChannel = channel
+    controller.playChannel(channel)
+
+    // sidebarPath is empty — playing live from channel list
+    #expect(controller.sidebarPath.isEmpty)
+    #expect(controller.playingProgramID == nil)
+
+    controller.replayCurrentStream()
+
+    // Should still replay via selectedChannel fallback
+    #expect(controller.playerManager.state != .idle)
+    #expect(controller.playingProgramID == nil)
+  }
+
+  @Test("Preserves persisted VOD position on replay")
+  func preservesVODPosition() throws {
+    let controller = try makeController()
+    let program = ProgramDTO(time: 1000, title: "Past Show", path: "/query/past_show")
+    controller.playVOD(program: program, channelName: "NHK総合")
+    controller.lastVODPosition = 300
+
+    controller.replayCurrentStream()
+
+    // VOD persistence intact — position not wiped
+    #expect(controller.lastPlayingProgramID == "/query/past_show")
+    #expect(controller.lastVODPosition != 0)
+  }
+
+  @Test("No-op when nothing is playing and no channel available")
+  func noOpWhenNothingAvailable() throws {
+    let controller = try makeController()
+
+    #expect(controller.playingProgramID == nil)
+    #expect(controller.sidebarPath.isEmpty)
+    #expect(controller.selectedChannel == nil)
+
+    controller.replayCurrentStream()
+
+    #expect(controller.playerManager.state == .idle)
+  }
+}
+
 @Suite("ChannelPlaybackController.sidebarPath")
 @MainActor
 struct ChannelPlaybackControllerSidebarPathTests {

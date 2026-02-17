@@ -234,6 +234,20 @@ final class ChannelPlaybackController {
     }
     playerManager.setNowPlayingInfo(title: "\(channelName) - \(program.title)", isLiveStream: false)
   }
+
+  /// Replay the current stream using the current session's access token.
+  /// Call after reauthentication to rebuild stream URLs with fresh credentials.
+  func replayCurrentStream() {
+    if playingProgramID != nil, !lastPlayingProgramID.isEmpty {
+      // Prefer live player position (mid-stream expiry) over persisted
+      // position (load failure before playback started)
+      let position = playerManager.currentTime > 0 ? playerManager.currentTime : lastVODPosition
+      let program = ProgramDTO(time: 0, title: lastPlayingProgramTitle, path: lastPlayingProgramID)
+      playVOD(program: program, channelName: lastPlayingChannelName, resumeFrom: position)
+    } else if let channel = sidebarPath.last ?? selectedChannel {
+      playChannel(channel)
+    }
+  }
 }
 
 // MARK: - Launch playback
@@ -468,9 +482,7 @@ struct AuthenticatedContainer: View {
           let newSession = await appState.reauthenticate()
           if let newSession {
             controller.session = newSession
-            if let channel = controller.sidebarPath.last {
-              controller.playChannel(channel)
-            }
+            controller.replayCurrentStream()
           }
           #if os(macOS)
           if newSession == nil {
