@@ -1,4 +1,7 @@
 import SwiftUI
+#if os(macOS)
+import AppKit
+#endif
 
 // MARK: - Sidebar toggle notification
 
@@ -339,6 +342,7 @@ struct AuthenticatedContainer: View {
   @Environment(\.scenePhase) private var scenePhase
   @Environment(\.horizontalSizeClass) private var sizeClass
   @FocusState private var sidebarFocused: Bool
+  @FocusState private var channelListFocused: Bool
   @State private var channelSelection: String?
   #if os(macOS)
   @Environment(\.openSettings) private var openSettings
@@ -451,17 +455,23 @@ struct AuthenticatedContainer: View {
       return .handled
     }
     .onReceive(NotificationCenter.default.publisher(for: .toggleSidebar)) { _ in
+      // Use AppKit's native NSSplitViewController toggle — it manages the
+      // sidebar animation, state, and focus reliably. Manually setting
+      // columnVisibility fights the framework (binding gets overridden).
+      #if os(macOS)
+      NSApp.sendAction(#selector(NSSplitViewController.toggleSidebar(_:)), to: nil, from: nil)
+      #else
       withAnimation {
-        if columnVisibility == .detailOnly {
-          columnVisibility = .doubleColumn
-          sidebarFocused = true
-        } else {
-          columnVisibility = .detailOnly
-        }
+        columnVisibility = columnVisibility == .detailOnly ? .doubleColumn : .detailOnly
       }
+      #endif
     }
     .onChange(of: columnVisibility) { _, newValue in
-      sidebarVisible = (newValue != .detailOnly)
+      let visible = newValue != .detailOnly
+      sidebarVisible = visible
+      if visible {
+        focusChannelList()
+      }
     }
     .onChange(of: scenePhase) { _, newPhase in
       if newPhase == .background || newPhase == .inactive {
@@ -541,7 +551,17 @@ struct AuthenticatedContainer: View {
     case .doNothing:
       break
     }
-    sidebarFocused = true
+    focusChannelList()
+  }
+
+  /// Focus the channel List directly — more reliable than the parent VStack's
+  /// `.focused($sidebarFocused)` which doesn't propagate into NavigationSplitView
+  /// sidebar columns after show/hide transitions.
+  private func focusChannelList() {
+    channelListFocused = false
+    Task { @MainActor in
+      channelListFocused = true
+    }
   }
 
   private var sidebarContent: some View {
@@ -613,13 +633,7 @@ struct AuthenticatedContainer: View {
         channelListList
           .onAppear {
             scrollToSelected(proxy: proxy)
-            // Defer focus to next run loop — onAppear fires during the
-            // transition animation before the view is fully mounted.
-            // A synchronous set is a no-op when sidebarFocused is already
-            // true (e.g. returning from program list via escape/back button).
-            Task { @MainActor in
-              sidebarFocused = true
-            }
+            focusChannelList()
           }
           .onChange(of: controller.selectedChannel?.id) { _, _ in
             // Delay: selectedChannel changes in .task after onAppear;
@@ -645,6 +659,7 @@ struct AuthenticatedContainer: View {
     List(selection: $channelSelection) {
       channelSections
     }
+    .focused($channelListFocused)
     .onKeyPress(.return) {
       guard let id = channelSelection,
             let channel = controller.channelListVM.channelGroups
