@@ -203,54 +203,30 @@ public struct ProgramListView: View {
   }
 
   private var programList: some View {
-    ScrollViewReader { proxy in
-      List(selection: $selectedProgramID) {
-        upcomingSection
-        nowSection
-        pastSections
-      }
-      .focused($listFocused)
-      .focusEffectDisabled()
-      .listStyle(.sidebar)
-      .onKeyPress(.return) {
-        guard let id = selectedProgramID else { return .ignored }
-        if id == viewModel.liveProgram?.id {
-          onPlayLive()
-          return .handled
-        }
-        if let program = viewModel.entries.first(where: { $0.id == id }),
-           program.hasVOD {
-          onPlayVOD(program)
-          return .handled
-        }
-        return .ignored
-      }
-      .onAppear {
-        applySelection(proxy: proxy)
-      }
-      .onChange(of: viewModel.liveProgram?.id) { _, _ in
-        // Programs loaded from network after view appeared — retry selection
-        if selectedProgramID == nil {
-          applySelection(proxy: proxy)
-        }
-      }
-      .onChange(of: focusTrigger) { _, _ in
-        listFocused = true
-      }
+    List(selection: $selectedProgramID) {
+      nowSection
+      upcomingSection
+      pastSections
     }
-  }
-
-  private func applySelection(proxy: ScrollViewProxy) {
-    let target = playingProgramID ?? viewModel.liveProgram?.id
-    if let target {
-      selectedProgramID = target
-      // Scroll after layout settles
-      Task {
-        try? await Task.sleep(for: .milliseconds(200))
-        proxy.scrollTo(target, anchor: .top)
+    .focused($listFocused)
+    .focusEffectDisabled()
+    .listStyle(.sidebar)
+    .onKeyPress(.return) {
+      guard let id = selectedProgramID else { return .ignored }
+      if id == viewModel.liveProgram?.id {
+        onPlayLive()
+        return .handled
       }
+      if let program = viewModel.entries.first(where: { $0.id == id }),
+         program.hasVOD {
+        onPlayVOD(program)
+        return .handled
+      }
+      return .ignored
     }
-    listFocused = true
+    .onChange(of: focusTrigger) { _, _ in
+      listFocused = true
+    }
   }
 
   // MARK: - Now section
@@ -259,11 +235,10 @@ public struct ProgramListView: View {
   private var nowSection: some View {
     if let current = viewModel.liveProgram {
       Section("Now") {
-        ProgramRow(entry: current, style: .live, isPlaying: playingProgramID == nil)
+        ProgramRow(entry: current, isLive: true, isPlaying: playingProgramID == nil)
           .listRowBackground(playingProgramID == nil ? Color.accentColor.opacity(0.15) : nil)
           .simultaneousGesture(TapGesture().onEnded { onPlayLive() })
           .tag(current.id)
-          .id(current.id)
       }
     }
   }
@@ -276,7 +251,7 @@ public struct ProgramListView: View {
     if !upcoming.isEmpty {
       Section("Upcoming") {
         ForEach(upcoming) { entry in
-          ProgramRow(entry: entry, style: .upcoming)
+          ProgramRow(entry: entry, dimmed: true)
             .tag(entry.id)
         }
       }
@@ -291,13 +266,12 @@ public struct ProgramListView: View {
       Section(section.label) {
         ForEach(section.programs) { entry in
           let playing = playingProgramID == entry.id
-          ProgramRow(entry: entry, style: entry.hasVOD ? .pastWithVOD : .pastNoVOD, isPlaying: playing)
+          ProgramRow(entry: entry, hasVOD: entry.hasVOD, isPlaying: playing)
             .listRowBackground(playing ? Color.accentColor.opacity(0.15) : nil)
             .simultaneousGesture(TapGesture().onEnded {
               if entry.hasVOD { onPlayVOD(entry) }
             })
             .tag(entry.id)
-            .id(entry.id)
         }
       }
     }
@@ -306,17 +280,12 @@ public struct ProgramListView: View {
 
 // MARK: - Program row
 
-enum ProgramRowStyle {
-  case live
-  case upcoming
-  case pastWithVOD
-  case pastNoVOD
-}
-
 struct ProgramRow: View {
   let entry: ProgramDTO
-  let style: ProgramRowStyle
+  var isLive: Bool = false
+  var hasVOD: Bool = false
   var isPlaying: Bool = false
+  var dimmed: Bool = false
 
   private static let jstFormatter: DateFormatter = {
     let f = DateFormatter()
@@ -326,63 +295,34 @@ struct ProgramRow: View {
   }()
 
   var body: some View {
-    HStack(spacing: 12) {
-      Text(Self.jstFormatter.string(from: Date(timeIntervalSince1970: TimeInterval(entry.time))))
-        .font(.caption.monospacedDigit())
-        .foregroundStyle(timeColor)
-        .frame(width: 44, alignment: .leading)
+    VStack(alignment: .leading, spacing: 2) {
+      HStack(spacing: 4) {
+        if isLive {
+          Circle().fill(.red).frame(width: 6, height: 6)
+        }
+        if isPlaying {
+          Image(systemName: "speaker.fill")
+            .font(.caption2)
+            .foregroundStyle(.tint)
+        }
+        Text(Self.jstFormatter.string(from: Date(timeIntervalSince1970: TimeInterval(entry.time))))
+          .font(.caption.monospacedDigit())
+          .foregroundStyle(isLive ? .red : .secondary)
+      }
 
       Text(entry.title)
-        .font(style == .live ? .body.bold() : .body)
+        .font(isLive ? .body.bold() : .body)
         .foregroundStyle(titleColor)
         .lineLimit(2)
-
-      Spacer()
-
-      trailingBadge
     }
     .padding(.vertical, 2)
     .contentShape(Rectangle())
   }
 
-  private var timeColor: Color {
-    switch style {
-    case .live: .red
-    case .upcoming, .pastNoVOD: .secondary.opacity(0.5)
-    case .pastWithVOD: .secondary
-    }
-  }
-
   private var titleColor: Color {
-    switch style {
-    case .live: .red
-    case .upcoming, .pastNoVOD: .secondary.opacity(0.5)
-    case .pastWithVOD: .primary
-    }
-  }
-
-  @ViewBuilder
-  private var trailingBadge: some View {
-    if isPlaying {
-      Image(systemName: "speaker.wave.2.fill")
-        .foregroundStyle(.tint)
-        .symbolEffect(.variableColor.iterative, isActive: true)
-    } else {
-      switch style {
-      case .live:
-        Text("LIVE")
-          .font(.caption2.bold())
-          .foregroundStyle(.white)
-          .padding(.horizontal, 6)
-          .padding(.vertical, 2)
-          .background(.red, in: Capsule())
-      case .pastWithVOD:
-        Image(systemName: "play.circle")
-          .foregroundStyle(.blue)
-      case .upcoming, .pastNoVOD:
-        EmptyView()
-      }
-    }
+    if isLive { return .red }
+    if dimmed || (!hasVOD && !isLive) { return .secondary.opacity(0.5) }
+    return .primary
   }
 }
 

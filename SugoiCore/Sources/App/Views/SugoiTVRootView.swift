@@ -428,9 +428,6 @@ struct AuthenticatedContainer: View {
         // Program list → back to channel list
         channelSelection = controller.selectedChannel?.id
         withAnimation { controller.sidebarPath = [] }
-        // Don't set sidebarFocused here — channelListContent.onAppear handles it.
-        // Setting it synchronously is a no-op (already true from program list focus)
-        // and prevents the deferred transition in onAppear from firing.
         return .handled
       } else if columnVisibility != .detailOnly {
         // Channel list → hide sidebar
