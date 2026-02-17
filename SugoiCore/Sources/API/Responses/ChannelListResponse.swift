@@ -43,4 +43,10 @@ public struct ChannelDTO: Codable, Sendable, Hashable, Identifiable {
   public var primaryCategory: String {
     categories.first ?? "Others"
   }
+
+  /// Display name with common prefixes like "[HD]" stripped.
+  public var displayName: String {
+    name.replacingOccurrences(of: "[HD]", with: "")
+      .trimmingCharacters(in: .whitespaces)
+  }
 }

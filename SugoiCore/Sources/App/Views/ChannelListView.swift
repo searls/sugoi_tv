@@ -158,7 +158,7 @@ struct ChannelRow: View {
       .clipShape(RoundedRectangle(cornerRadius: 6))
 
       VStack(alignment: .leading, spacing: 2) {
-        Text(channel.name)
+        Text(channel.displayName)
           .font(.body)
           .lineLimit(1)
 

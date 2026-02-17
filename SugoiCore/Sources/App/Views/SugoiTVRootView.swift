@@ -203,7 +203,7 @@ final class ChannelPlaybackController {
       programGuideService: programGuideService,
       config: session.productConfig,
       channelID: channel.id,
-      channelName: channel.name
+      channelName: channel.displayName
     )
     programListVMs[channel.id] = vm
     return vm
@@ -678,7 +678,8 @@ struct AuthenticatedContainer: View {
       onBack: {
         channelSelection = controller.selectedChannel?.id
         withAnimation { controller.sidebarPath = [] }
-      }
+      },
+      channelDescription: channel.description
     )
   }
 

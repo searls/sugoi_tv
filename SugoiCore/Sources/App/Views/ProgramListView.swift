@@ -174,7 +174,8 @@ public struct ProgramListView: View {
     onPlayLive: @escaping () -> Void,
     onPlayVOD: @escaping (ProgramDTO) -> Void,
     focusTrigger: Bool = false,
-    onBack: (() -> Void)? = nil
+    onBack: (() -> Void)? = nil,
+    channelDescription: String? = nil
   ) {
     self.viewModel = viewModel
     self.playingProgramID = playingProgramID
@@ -182,9 +183,11 @@ public struct ProgramListView: View {
     self.onPlayVOD = onPlayVOD
     self.focusTrigger = focusTrigger
     self.onBack = onBack
+    self.channelDescription = channelDescription
   }
 
   var onBack: (() -> Void)?
+  var channelDescription: String?
 
   public var body: some View {
     Group {
@@ -248,8 +251,15 @@ public struct ProgramListView: View {
         }
         .buttonStyle(.plain)
 
-        Text(viewModel.channelName)
-          .font(.title2.bold())
+        VStack(alignment: .leading, spacing: 2) {
+          Text(viewModel.channelName)
+            .font(.title2.bold())
+          if let desc = channelDescription, !desc.isEmpty {
+            Text(desc)
+              .font(.caption)
+              .foregroundStyle(.secondary)
+          }
+        }
       }
       .listRowSeparator(.hidden)
       .listRowBackground(Color.clear)
@@ -334,7 +344,7 @@ struct ProgramRow: View {
         if isPlaying {
           Image(systemName: "speaker.wave.2.fill")
             .font(.caption2)
-            .foregroundStyle(.tint)
+            .foregroundStyle(.primary)
             .symbolEffect(.variableColor.iterative, isActive: true)
         }
       }
