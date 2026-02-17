@@ -51,9 +51,15 @@ public struct ChannelDTO: Codable, Sendable, Hashable, Identifiable {
   }
 
   /// Display description with "[HD]" prefix stripped.
+  /// Returns nil if it's a fuzzy match of the display name (redundant).
   public var displayDescription: String? {
-    description?
+    guard let raw = description?
       .replacingOccurrences(of: "[HD]", with: "")
-      .trimmingCharacters(in: .whitespaces)
+      .trimmingCharacters(in: .whitespaces),
+      !raw.isEmpty else { return nil }
+    // Hide if it's just a case/whitespace variant of the display name
+    let norm = { (s: String) in s.lowercased().filter { !$0.isWhitespace } }
+    guard norm(raw) != norm(displayName) else { return nil }
+    return raw
   }
 }
