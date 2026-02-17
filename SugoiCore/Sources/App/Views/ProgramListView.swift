@@ -23,6 +23,11 @@ public final class ProgramListViewModel {
   private(set) var upcomingPrograms: [ProgramDTO] = []
   private(set) var pastByDate: [DateSection] = []
 
+  /// How many past programs to render in the List. Starts at `pageSize`,
+  /// grows as the user scrolls, resets on channel change.
+  var pastDisplayLimit = ProgramListViewModel.pageSize
+  nonisolated static let pageSize = 100
+
   private let programGuideService: ProgramGuideService
   private let config: ProductConfig
   let channelID: String
@@ -106,11 +111,35 @@ public final class ProgramListViewModel {
     return cal
   }()
 
-  /// Maximum number of past days to display in the program list.
-  /// The full 30-day EPG is still fetched and cached — this only limits
-  /// how many days of rows the List renders, which directly affects
-  /// main-thread layout cost during sidebar animations.
-  nonisolated static let maxPastDays = 5
+  /// Paginated slice of `pastByDate`, capped to `pastDisplayLimit` total programs.
+  var displayedPastByDate: [DateSection] {
+    var remaining = pastDisplayLimit
+    var result: [DateSection] = []
+    for section in pastByDate {
+      if remaining <= 0 { break }
+      if section.programs.count <= remaining {
+        result.append(section)
+        remaining -= section.programs.count
+      } else {
+        result.append(DateSection(label: section.label, programs: Array(section.programs.prefix(remaining))))
+        remaining = 0
+      }
+    }
+    return result
+  }
+
+  var hasMorePast: Bool {
+    let total = pastByDate.reduce(0) { $0 + $1.programs.count }
+    return pastDisplayLimit < total
+  }
+
+  func showMorePast() {
+    pastDisplayLimit += Self.pageSize
+  }
+
+  func resetPastDisplay() {
+    pastDisplayLimit = Self.pageSize
+  }
 
   nonisolated static func groupPastByDate(
     entries: [ProgramDTO],
@@ -118,12 +147,11 @@ public final class ProgramListViewModel {
     now: Date = Date()
   ) -> [DateSection] {
     let timestamp = Int(now.timeIntervalSince1970)
-    let cutoff = timestamp - (maxPastDays * 86400)
     let cal = jstCalendar
 
-    // Past = before now AND not the current program, capped to maxPastDays
+    // Past = before now AND not the current program
     let pastEntries = entries.filter { entry in
-      entry.time < timestamp && entry.time >= cutoff && entry != current
+      entry.time < timestamp && entry != current
     }
 
     // Group by JST calendar day
@@ -344,7 +372,7 @@ public struct ProgramListView: View {
 
   @ViewBuilder
   private var pastSections: some View {
-    ForEach(viewModel.pastByDate, id: \.label) { section in
+    ForEach(viewModel.displayedPastByDate, id: \.label) { section in
       Section(section.label) {
         ForEach(section.programs) { entry in
           let playing = playingProgramID == entry.id
@@ -356,6 +384,12 @@ public struct ProgramListView: View {
             .tag(entry.id)
         }
       }
+    }
+    if viewModel.hasMorePast {
+      ProgressView()
+        .frame(maxWidth: .infinity)
+        .listRowSeparator(.hidden)
+        .onAppear { viewModel.showMorePast() }
     }
   }
 }

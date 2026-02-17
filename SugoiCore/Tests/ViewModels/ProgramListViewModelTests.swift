@@ -333,26 +333,61 @@ struct ProgramListViewModelSectioningTests {
     #expect(sections[0].label.hasPrefix("Wed"))
   }
 
-  @Test("Past programs older than maxPastDays are excluded")
-  func pastDaysCutoff() {
-    // now = Feb 14 15:00 JST; maxPastDays = 5 → cutoff is Feb 9 15:00 JST
+  @Test("displayedPastByDate paginates and showMorePast loads next page")
+  @MainActor
+  func pastPagination() {
     let now = Self.jstDate(month: 2, day: 14, hour: 15)
-    let entries = [
-      ProgramDTO(time: Self.jstTimestamp(month: 2, day: 7, hour: 10), title: "7 days ago", path: "/old"),
-      ProgramDTO(time: Self.jstTimestamp(month: 2, day: 9, hour: 10), title: "5 days ago morning", path: "/edge1"),
-      ProgramDTO(time: Self.jstTimestamp(month: 2, day: 9, hour: 20), title: "5 days ago evening", path: "/edge2"),
-      ProgramDTO(time: Self.jstTimestamp(month: 2, day: 12, hour: 10), title: "2 days ago", path: "/recent"),
-      ProgramDTO(time: Self.jstTimestamp(month: 2, day: 14, hour: 14), title: "Current", path: ""),
-    ]
-    let current = ProgramGuideService.liveProgram(in: entries, at: now)
-    let sections = ProgramListViewModel.groupPastByDate(entries: entries, current: current, now: now)
+    // Create 250 past programs across multiple days
+    var entries: [ProgramDTO] = []
+    for i in 0..<250 {
+      let day = 1 + (i / 40) // spread across ~7 days
+      let hour = 6 + (i % 18) // 06:00–23:00
+      let minute = (i * 7) % 60
+      entries.append(ProgramDTO(
+        time: Self.jstTimestamp(month: 2, day: max(1, 14 - day), hour: hour, minute: minute),
+        title: "Program \(i)",
+        path: "/p\(i)"
+      ))
+    }
+    // Sort by time ascending (as the API returns)
+    entries.sort { $0.time < $1.time }
+    // Add a current program
+    entries.append(ProgramDTO(time: Self.jstTimestamp(month: 2, day: 14, hour: 14), title: "Current", path: ""))
 
-    let allTitles = sections.flatMap(\.programs).map(\.title)
-    // 7 days ago is beyond cutoff
-    #expect(!allTitles.contains("7 days ago"))
-    // 2 days ago is within cutoff
-    #expect(allTitles.contains("2 days ago"))
-    // 5 days ago evening (Feb 9 20:00) is after cutoff (Feb 9 15:00) → included
-    #expect(allTitles.contains("5 days ago evening"))
+    let mock = MockHTTPSession()
+    let service = ProgramGuideService(apiClient: APIClient(session: mock.session))
+    let vm = ProgramListViewModel(
+      programGuideService: service,
+      config: ProgramListViewModelTests.testConfig,
+      channelID: "page_\(UUID())",
+      channelName: "NHK"
+    )
+    vm.entries = entries
+
+    let totalPast = vm.pastByDate.reduce(0) { $0 + $1.programs.count }
+    #expect(totalPast == 250)
+
+    // Initial page
+    let page1Count = vm.displayedPastByDate.reduce(0) { $0 + $1.programs.count }
+    #expect(page1Count == ProgramListViewModel.pageSize)
+    #expect(vm.hasMorePast)
+
+    // Load second page
+    vm.showMorePast()
+    let page2Count = vm.displayedPastByDate.reduce(0) { $0 + $1.programs.count }
+    #expect(page2Count == ProgramListViewModel.pageSize * 2)
+    #expect(vm.hasMorePast)
+
+    // Load third page (exhausts data)
+    vm.showMorePast()
+    let page3Count = vm.displayedPastByDate.reduce(0) { $0 + $1.programs.count }
+    #expect(page3Count == 250)
+    #expect(!vm.hasMorePast)
+
+    // Reset
+    vm.resetPastDisplay()
+    let resetCount = vm.displayedPastByDate.reduce(0) { $0 + $1.programs.count }
+    #expect(resetCount == ProgramListViewModel.pageSize)
+    #expect(vm.hasMorePast)
   }
 }

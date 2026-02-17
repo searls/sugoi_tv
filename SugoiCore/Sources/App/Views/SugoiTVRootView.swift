@@ -195,7 +195,12 @@ final class ChannelPlaybackController {
   }
 
   /// Return the cached ProgramListViewModel, or create a new one for the given channel.
+  /// Resets pagination on previously-viewed channels to keep the List lightweight.
   func programListViewModel(for channel: ChannelDTO) -> ProgramListViewModel {
+    // Reset pagination on other channels so stale deep-scroll state doesn't persist
+    for (id, vm) in programListVMs where id != channel.id {
+      vm.resetPastDisplay()
+    }
     if let existing = programListVMs[channel.id] {
       return existing
     }
