@@ -50,7 +50,7 @@ public final class RefererProxy {
           case .ready:
             self?.port = listener.port?.rawValue
             self?.isReady = true
-          case .failed(let error):
+          case .failed(_):
             self?.isReady = false
             self?.port = nil
           case .cancelled:
