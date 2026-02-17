@@ -472,6 +472,7 @@ struct AuthenticatedContainer: View {
         if sizeClass == .compact {
           controller.playerManager.stop()
         }
+        focusChannelList()
       }
     }
     .onChange(of: controller.playerManager.state) { _, newState in

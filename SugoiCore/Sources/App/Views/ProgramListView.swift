@@ -318,6 +318,13 @@ public struct ProgramListView: View {
         proxy.scrollTo(target, anchor: .center)
       }
     }
+    // Request focus via the parent's binding once the List is in the hierarchy
+    if let binding = focusBinding {
+      binding.wrappedValue = false
+      DispatchQueue.main.async {
+        binding.wrappedValue = true
+      }
+    }
   }
 
   // MARK: - Back header
