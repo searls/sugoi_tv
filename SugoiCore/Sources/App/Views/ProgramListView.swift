@@ -226,7 +226,6 @@ public struct ProgramListView: View {
       }
     }
     .task {
-      NSLog("⏱ ProgramList: %d entries, %d sections", viewModel.entries.count, viewModel.pastByDate.count)
       await viewModel.loadPrograms()
     }
   }

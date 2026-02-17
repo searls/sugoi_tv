@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Simulate bad network (200ms latency + 10% packet loss) or restore normal.
+#
+# Usage:
+#   sudo script/network_condition on    # enable bad network
+#   sudo script/network_condition off   # restore normal
+set -e
+
+case "${1:-}" in
+  on)
+    echo "==> Enabling network conditioning: 2000ms delay, 50% packet loss"
+    dnctl pipe 1 config delay 2000 plr 0.5
+    cat <<'PF' | pfctl -ef -
+dummynet-anchor "conditioner"
+anchor "conditioner"
+PF
+    cat <<'ANCHOR' | pfctl -a conditioner -f -
+dummynet in proto tcp from any to any pipe 1
+dummynet out proto tcp from any to any pipe 1
+ANCHOR
+    echo "==> Network conditioning ON. Run 'sudo script/network_condition off' to restore."
+    ;;
+  off)
+    echo "==> Disabling network conditioning"
+    dnctl -q flush
+    pfctl -f /etc/pf.conf 2>/dev/null || true
+    pfctl -d 2>/dev/null || true
+    echo "==> Network conditioning OFF. Normal traffic restored."
+    ;;
+  *)
+    echo "Usage: sudo $0 on|off"
+    exit 1
+    ;;
+esac
