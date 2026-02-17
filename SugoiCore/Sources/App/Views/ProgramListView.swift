@@ -68,7 +68,20 @@ public final class ProgramListViewModel {
   }
   #endif
 
+  private var lastFetchTime: Date?
+  private let refreshInterval: TimeInterval = 3600 // 1 hour
+
   func loadPrograms() async {
+    // Only fetch from network at most once per hour — program data changes
+    // very rarely, and re-fetching + re-rendering hundreds of rows on every
+    // sidebar show (NavigationSplitView recreates sidebar content) blocks
+    // the main thread.
+    if let lastFetch = lastFetchTime,
+       Date().timeIntervalSince(lastFetch) < refreshInterval,
+       !entries.isEmpty {
+      return
+    }
+    lastFetchTime = Date()
     let showSpinner = entries.isEmpty
     if showSpinner { isLoading = true }
     errorMessage = nil
