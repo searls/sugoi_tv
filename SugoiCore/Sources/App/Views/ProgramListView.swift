@@ -106,17 +106,24 @@ public final class ProgramListViewModel {
     return cal
   }()
 
+  /// Maximum number of past days to display in the program list.
+  /// The full 30-day EPG is still fetched and cached — this only limits
+  /// how many days of rows the List renders, which directly affects
+  /// main-thread layout cost during sidebar animations.
+  nonisolated static let maxPastDays = 5
+
   nonisolated static func groupPastByDate(
     entries: [ProgramDTO],
     current: ProgramDTO?,
     now: Date = Date()
   ) -> [DateSection] {
     let timestamp = Int(now.timeIntervalSince1970)
+    let cutoff = timestamp - (maxPastDays * 86400)
     let cal = jstCalendar
 
-    // Past = before now AND not the current program
+    // Past = before now AND not the current program, capped to maxPastDays
     let pastEntries = entries.filter { entry in
-      entry.time < timestamp && entry != current
+      entry.time < timestamp && entry.time >= cutoff && entry != current
     }
 
     // Group by JST calendar day

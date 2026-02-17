@@ -332,4 +332,27 @@ struct ProgramListViewModelSectioningTests {
     // Should be English day-of-week, e.g. "Wed, Feb 11"
     #expect(sections[0].label.hasPrefix("Wed"))
   }
+
+  @Test("Past programs older than maxPastDays are excluded")
+  func pastDaysCutoff() {
+    // now = Feb 14 15:00 JST; maxPastDays = 5 → cutoff is Feb 9 15:00 JST
+    let now = Self.jstDate(month: 2, day: 14, hour: 15)
+    let entries = [
+      ProgramDTO(time: Self.jstTimestamp(month: 2, day: 7, hour: 10), title: "7 days ago", path: "/old"),
+      ProgramDTO(time: Self.jstTimestamp(month: 2, day: 9, hour: 10), title: "5 days ago morning", path: "/edge1"),
+      ProgramDTO(time: Self.jstTimestamp(month: 2, day: 9, hour: 20), title: "5 days ago evening", path: "/edge2"),
+      ProgramDTO(time: Self.jstTimestamp(month: 2, day: 12, hour: 10), title: "2 days ago", path: "/recent"),
+      ProgramDTO(time: Self.jstTimestamp(month: 2, day: 14, hour: 14), title: "Current", path: ""),
+    ]
+    let current = ProgramGuideService.liveProgram(in: entries, at: now)
+    let sections = ProgramListViewModel.groupPastByDate(entries: entries, current: current, now: now)
+
+    let allTitles = sections.flatMap(\.programs).map(\.title)
+    // 7 days ago is beyond cutoff
+    #expect(!allTitles.contains("7 days ago"))
+    // 2 days ago is within cutoff
+    #expect(allTitles.contains("2 days ago"))
+    // 5 days ago evening (Feb 9 20:00) is after cutoff (Feb 9 15:00) → included
+    #expect(allTitles.contains("5 days ago evening"))
+  }
 }
