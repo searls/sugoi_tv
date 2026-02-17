@@ -162,6 +162,8 @@ public struct ProgramListView: View {
   var playingProgramID: String?
   var onPlayLive: () -> Void
   var onPlayVOD: (ProgramDTO) -> Void
+  /// Toggle this from the parent to request focus on the program list.
+  var focusTrigger: Bool = false
 
   @State private var selectedProgramID: String?
   @FocusState private var listFocused: Bool
@@ -170,12 +172,14 @@ public struct ProgramListView: View {
     viewModel: ProgramListViewModel,
     playingProgramID: String? = nil,
     onPlayLive: @escaping () -> Void,
-    onPlayVOD: @escaping (ProgramDTO) -> Void
+    onPlayVOD: @escaping (ProgramDTO) -> Void,
+    focusTrigger: Bool = false
   ) {
     self.viewModel = viewModel
     self.playingProgramID = playingProgramID
     self.onPlayLive = onPlayLive
     self.onPlayVOD = onPlayVOD
+    self.focusTrigger = focusTrigger
   }
 
   public var body: some View {
@@ -229,6 +233,9 @@ public struct ProgramListView: View {
         if selectedProgramID == nil {
           applySelection(proxy: proxy)
         }
+      }
+      .onChange(of: focusTrigger) { _, _ in
+        listFocused = true
       }
     }
   }

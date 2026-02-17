@@ -334,6 +334,7 @@ struct AuthenticatedContainer: View {
   @FocusState private var sidebarFocused: Bool
   @FocusState private var channelListFocused: Bool
   @State private var channelSelection: String?
+  @State private var programListFocusTrigger = false
   #if os(macOS)
   @Environment(\.openSettings) private var openSettings
   #endif
@@ -447,7 +448,13 @@ struct AuthenticatedContainer: View {
       let visible = (newValue != .detailOnly)
       if visible != sidebarVisible {
         sidebarVisible = visible
-        if visible { focusChannelList() }
+        if visible {
+          if controller.sidebarPath.isEmpty {
+            focusChannelList()
+          } else {
+            programListFocusTrigger.toggle()
+          }
+        }
       }
     }
     .onChange(of: scenePhase) { _, newPhase in
@@ -684,7 +691,8 @@ struct AuthenticatedContainer: View {
       onPlayLive: { controller.playChannel(channel) },
       onPlayVOD: { program in
         controller.playVOD(program: program, channelName: channel.name)
-      }
+      },
+      focusTrigger: programListFocusTrigger
     )
   }
 

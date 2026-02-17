@@ -7,6 +7,9 @@ struct SugoiTVApp: App {
   @NSApplicationDelegateAdaptor private var appDelegate: AppDelegate
   #endif
   @State private var appState = AppState()
+  #if os(macOS)
+  @AppStorage("sidebarVisible") private var sidebarVisible = true
+  #endif
 
   var body: some Scene {
     WindowGroup {
@@ -18,6 +21,16 @@ struct SugoiTVApp: App {
     #if os(macOS)
     .windowStyle(.hiddenTitleBar)
     .defaultSize(width: 960, height: 540)
+    #endif
+    #if os(macOS)
+    .commands {
+      CommandGroup(replacing: .sidebar) {
+        Button(sidebarVisible ? "Hide Sidebar" : "Show Sidebar") {
+          NSApp.sendAction(#selector(NSSplitViewController.toggleSidebar(_:)), to: nil, from: nil)
+        }
+        .keyboardShortcut("s", modifiers: [.command, .option])
+      }
+    }
     #endif
 
     #if os(macOS)
