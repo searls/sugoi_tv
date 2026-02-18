@@ -277,17 +277,20 @@ struct AuthenticatedContainer: View {
   }
 
   /// Regular (Mac/iPad): programs and player side by side, like a 3-column layout.
+  /// Program list is visible when the sidebar is visible; both collapse together.
   private var regularDetail: some View {
     HStack(spacing: 0) {
-      if let channel = controller.selectedChannel {
+      if let channel = controller.selectedChannel, columnVisibility != .detailOnly {
         ProgramListView(
           viewModel: controller.programListViewModel(for: channel),
           playingProgramID: controller.playingProgramID,
           onPlayLive: {
             controller.playChannel(channel)
+            withAnimation { columnVisibility = .detailOnly }
           },
           onPlayVOD: { program in
             controller.playVOD(program: program, channelName: channel.name)
+            withAnimation { columnVisibility = .detailOnly }
           },
           focusBinding: $programListFocused
         )
