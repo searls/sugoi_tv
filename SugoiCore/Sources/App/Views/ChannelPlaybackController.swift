@@ -19,16 +19,12 @@ extension String {
 final class ChannelPlaybackController {
   let playerManager = PlayerManager()
   let channelListVM: ChannelListViewModel
-  var selectedChannel: ChannelDTO?
+  private(set) var selectedChannel: ChannelDTO?
   /// ID of the currently-playing VOD program, or nil when playing live.
-  var playingProgramID: String?
+  private(set) var playingProgramID: String?
   /// Metadata for the stream currently loading, shown in the loading overlay.
-  var loadingTitle: String = ""
-  @ObservationIgnored @AppStorage("lastChannelId") var lastChannelId: String = ""
-  @ObservationIgnored @AppStorage("lastPlayingProgramID") var lastPlayingProgramID: String = ""
-  @ObservationIgnored @AppStorage("lastPlayingProgramTitle") var lastPlayingProgramTitle: String = ""
-  @ObservationIgnored @AppStorage("lastPlayingChannelName") var lastPlayingChannelName: String = ""
-  @ObservationIgnored @AppStorage("lastVODPosition") var lastVODPosition: Double = 0
+  private(set) var loadingTitle: String = ""
+  @ObservationIgnored var persistence = PlaybackPersistence()
 
   /// Sidebar drill-down path: empty = channel list, [channel] = program list for that channel.
   var sidebarPath: [ChannelDTO] = []
@@ -37,10 +33,10 @@ final class ChannelPlaybackController {
   /// Persists across navigation so returning to a channel is instant.
   private var programListVMs: [String: ProgramListViewModel] = [:]
 
-  var session: AuthService.Session
+  private(set) var session: AuthService.Session
   /// One-shot guard: allows a single reauth attempt per stream load.
   /// Reset to false in playChannel(), set to true after attempting reauth.
-  var hasAttemptedReauth = false
+  private(set) var hasAttemptedReauth = false
 
   /// On compact layouts (iPhone), which column the NavigationSplitView should show.
   /// Starts at `.sidebar` so the channel list appears first; switches to `.detail` on play.
@@ -92,8 +88,8 @@ final class ChannelPlaybackController {
   private func autoSelectChannel() {
     let allChannels = channelListVM.channelGroups.flatMap(\.channels)
     guard !allChannels.isEmpty else { return }
-    if !lastChannelId.isEmpty,
-       let match = allChannels.first(where: { $0.id == lastChannelId }) {
+    if !persistence.lastChannelId.isEmpty,
+       let match = allChannels.first(where: { $0.id == persistence.lastChannelId }) {
       selectedChannel = match
     } else if let live = allChannels.first(where: { $0.running == 1 }) {
       selectedChannel = live
@@ -110,7 +106,6 @@ final class ChannelPlaybackController {
 
   func playChannel(_ channel: ChannelDTO) {
     hasAttemptedReauth = false
-    lastChannelId = channel.id
     preferredCompactColumn = .detail
     guard let url = StreamURLBuilder.liveStreamURL(
       liveHost: session.productConfig.liveHost,
@@ -120,10 +115,7 @@ final class ChannelPlaybackController {
 
     playingProgramID = nil
     loadingTitle = channel.name
-    lastPlayingProgramID = ""
-    lastPlayingProgramTitle = ""
-    lastPlayingChannelName = ""
-    lastVODPosition = 0
+    persistence.recordLivePlay(channelId: channel.id)
 
     // When the proxy is ready, route through it so AirPlay receivers can
     // reach the VMS server. Fall back to direct URL + AVURLAsset header
@@ -169,9 +161,7 @@ final class ChannelPlaybackController {
 
     playingProgramID = program.id
     loadingTitle = program.title
-    lastPlayingProgramID = program.path
-    lastPlayingProgramTitle = program.title
-    lastPlayingChannelName = channelName
+    persistence.recordVODPlay(programPath: program.path, title: program.title, channelName: channelName)
 
     if let proxiedURL = refererProxy.proxiedURL(for: url) {
       playerManager.loadVODStream(url: proxiedURL, referer: "", resumeFrom: resumeFrom)
@@ -182,15 +172,106 @@ final class ChannelPlaybackController {
     playerManager.setNowPlayingInfo(title: "\(channelName) - \(program.title)", isLiveStream: false)
   }
 
+  // MARK: - Navigation
+
+  /// Drill into a channel's program list. Optionally auto-play the live stream.
+  func drillIntoChannel(_ channel: ChannelDTO, autoPlay: Bool) {
+    sidebarPath = [channel]
+    selectedChannel = channel
+    persistence.lastChannelId = channel.id
+    if autoPlay {
+      playChannel(channel)
+    }
+  }
+
+  /// Navigate back to the channel list. Optionally stop playback (compact layouts).
+  func navigateBack(stopPlayback: Bool) {
+    sidebarPath = []
+    if stopPlayback {
+      playerManager.stop()
+    }
+  }
+
+  // MARK: - Session
+
+  /// Update the session after a token refresh or reauth.
+  func updateSession(_ newSession: AuthService.Session) {
+    session = newSession
+  }
+
+  /// Attempt to handle a permission failure. Returns true if reauth should proceed,
+  /// false if already attempted.
+  func handlePermissionFailure() -> Bool {
+    guard !hasAttemptedReauth else { return false }
+    hasAttemptedReauth = true
+    playerManager.clearError()
+    return true
+  }
+
+  /// Test-only setter for hasAttemptedReauth.
+  internal func setHasAttemptedReauthForTesting(_ value: Bool) {
+    hasAttemptedReauth = value
+  }
+
+  /// Test-only setter for selectedChannel.
+  internal func setSelectedChannelForTesting(_ channel: ChannelDTO?) {
+    selectedChannel = channel
+  }
+
+  // MARK: - Persistence helpers
+
+  /// Save the current VOD position if a VOD is playing.
+  func saveVODPositionIfNeeded() {
+    if playingProgramID != nil {
+      persistence.savePosition(playerManager.currentTime)
+    }
+  }
+
+  // MARK: - Playback controls
+
+  /// Toggle play/pause on the current player.
+  func togglePlayPause() {
+    guard playerManager.player != nil else { return }
+    playerManager.togglePlayPause()
+  }
+
+  /// Try to start playback from the current cached selection.
+  /// No-op if already playing, on compact, or no selection available.
+  func attemptLaunchPlayback(isCompact: Bool, lastActiveTimestamp: TimeInterval) {
+    guard !isCompact,
+          playerManager.state == .idle,
+          sidebarPath.isEmpty,
+          let channel = selectedChannel else { return }
+    let decision = LaunchPlayback.decide(
+      isCompact: isCompact,
+      lastActiveTimestamp: lastActiveTimestamp,
+      now: Date().timeIntervalSince1970,
+      lastProgramID: persistence.lastPlayingProgramID,
+      lastProgramTitle: persistence.lastPlayingProgramTitle,
+      lastChannelName: persistence.lastPlayingChannelName,
+      lastVODPosition: persistence.lastVODPosition
+    )
+    switch decision {
+    case .resumeVOD(let id, let title, let name, let pos):
+      sidebarPath = [channel]
+      let program = ProgramDTO(time: 0, title: title, path: id)
+      playVOD(program: program, channelName: name, resumeFrom: pos)
+    case .playLive:
+      playChannel(channel)
+    case .doNothing:
+      break
+    }
+  }
+
   /// Replay the current stream using the current session's access token.
   /// Call after reauthentication to rebuild stream URLs with fresh credentials.
   func replayCurrentStream() {
-    if playingProgramID != nil, !lastPlayingProgramID.isEmpty {
+    if playingProgramID != nil, !persistence.lastPlayingProgramID.isEmpty {
       // Prefer live player position (mid-stream expiry) over persisted
       // position (load failure before playback started)
-      let position = playerManager.currentTime > 0 ? playerManager.currentTime : lastVODPosition
-      let program = ProgramDTO(time: 0, title: lastPlayingProgramTitle, path: lastPlayingProgramID)
-      playVOD(program: program, channelName: lastPlayingChannelName, resumeFrom: position)
+      let position = playerManager.currentTime > 0 ? playerManager.currentTime : persistence.lastVODPosition
+      let program = ProgramDTO(time: 0, title: persistence.lastPlayingProgramTitle, path: persistence.lastPlayingProgramID)
+      playVOD(program: program, channelName: persistence.lastPlayingChannelName, resumeFrom: position)
     } else if let channel = sidebarPath.last ?? selectedChannel {
       playChannel(channel)
     }

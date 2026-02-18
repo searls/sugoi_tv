@@ -61,13 +61,15 @@ struct AuthenticatedContainer: View {
     .task {
       // Phase 1: Select from cache and start playback immediately
       controller.selectFromCache()
-      attemptLaunchPlayback()
+      controller.attemptLaunchPlayback(isCompact: sizeClass == .compact, lastActiveTimestamp: lastActiveTimestamp)
+      focusChannelList()
 
       // Phase 2: Refresh channels from network (non-blocking for UI)
       await controller.refreshChannelList()
 
       // Phase 3: If cold start (no cache), try playing now that we have data
-      attemptLaunchPlayback()
+      controller.attemptLaunchPlayback(isCompact: sizeClass == .compact, lastActiveTimestamp: lastActiveTimestamp)
+      focusChannelList()
     }
     .onAppear {
       let show = SidebarPersistence.shouldShowSidebar(
@@ -93,7 +95,7 @@ struct AuthenticatedContainer: View {
       if !controller.sidebarPath.isEmpty {
         // Program list → back to channel list
         channelSelection = controller.selectedChannel?.id
-        withAnimation { controller.sidebarPath = [] }
+        withAnimation { controller.navigateBack(stopPlayback: false) }
         return .handled
       } else if columnVisibility != .detailOnly {
         // Channel list → hide sidebar
@@ -104,7 +106,7 @@ struct AuthenticatedContainer: View {
     }
     .onKeyPress(.space) {
       guard controller.playerManager.player != nil else { return .ignored }
-      controller.playerManager.togglePlayPause()
+      controller.togglePlayPause()
       return .handled
     }
     .onChange(of: columnVisibility) { _, newValue in
@@ -123,28 +125,22 @@ struct AuthenticatedContainer: View {
     .onChange(of: scenePhase) { _, newPhase in
       if newPhase == .background || newPhase == .inactive {
         lastActiveTimestamp = Date().timeIntervalSince1970
-        if controller.playingProgramID != nil {
-          controller.lastVODPosition = controller.playerManager.currentTime
-        }
+        controller.saveVODPositionIfNeeded()
       }
     }
     .onChange(of: appState.session?.accessToken) { _, _ in
       if let newSession = appState.session {
-        controller.session = newSession
+        controller.updateSession(newSession)
       }
     }
     .onChange(of: controller.sidebarPath) { oldPath, newPath in
       if let channel = newPath.last, oldPath.last?.id != channel.id {
-        // Drilled into a channel
-        let isNewChannel = controller.selectedChannel?.id != channel.id
-        controller.selectedChannel = channel
-        controller.lastChannelId = channel.id
-        if isNewChannel && sizeClass != .compact {
-          // Mac/iPad: auto-play live when switching to a different channel
-          controller.playChannel(channel)
-        }
+        // Framework-driven drill-in (NavigationStack push or swipe-back re-push).
+        // Sync selection + persistence + auto-play via the controller method.
+        let autoPlay = controller.selectedChannel?.id != channel.id && sizeClass != .compact
+        controller.drillIntoChannel(channel, autoPlay: autoPlay)
       } else if newPath.isEmpty && !oldPath.isEmpty {
-        // Navigated back to channel list
+        // Navigated back to channel list (swipe-back on iOS)
         if sizeClass == .compact {
           controller.playerManager.stop()
         }
@@ -154,13 +150,11 @@ struct AuthenticatedContainer: View {
     .onChange(of: controller.playerManager.state) { _, newState in
       if case .failed(let message) = newState,
          message.looksLikePermissionError,
-         !controller.hasAttemptedReauth {
-        controller.hasAttemptedReauth = true
-        controller.playerManager.clearError()
+         controller.handlePermissionFailure() {
         Task {
           let newSession = await appState.reauthenticate()
           if let newSession {
-            controller.session = newSession
+            controller.updateSession(newSession)
             controller.replayCurrentStream()
           }
           #if os(macOS)
@@ -171,35 +165,6 @@ struct AuthenticatedContainer: View {
         }
       }
     }
-  }
-
-  /// Try to start playback from the current cached selection.
-  /// No-op if already playing or no selection available.
-  private func attemptLaunchPlayback() {
-    guard sizeClass != .compact,
-          controller.playerManager.state == .idle,
-          controller.sidebarPath.isEmpty,
-          let channel = controller.selectedChannel else { return }
-    let decision = LaunchPlayback.decide(
-      isCompact: sizeClass == .compact,
-      lastActiveTimestamp: lastActiveTimestamp,
-      now: Date().timeIntervalSince1970,
-      lastProgramID: controller.lastPlayingProgramID,
-      lastProgramTitle: controller.lastPlayingProgramTitle,
-      lastChannelName: controller.lastPlayingChannelName,
-      lastVODPosition: controller.lastVODPosition
-    )
-    switch decision {
-    case .resumeVOD(let id, let title, let name, let pos):
-      controller.sidebarPath = [channel]
-      let program = ProgramDTO(time: 0, title: title, path: id)
-      controller.playVOD(program: program, channelName: name, resumeFrom: pos)
-    case .playLive:
-      controller.playChannel(channel)
-    case .doNothing:
-      break
-    }
-    focusChannelList()
   }
 
   /// Focus the channel List directly — more reliable than the parent VStack's
@@ -320,7 +285,7 @@ struct AuthenticatedContainer: View {
             let channel = controller.channelListVM.channelGroups
               .flatMap(\.channels).first(where: { $0.id == id })
       else { return .ignored }
-      withAnimation { controller.sidebarPath = [channel] }
+      withAnimation { controller.drillIntoChannel(channel, autoPlay: sizeClass != .compact) }
       return .handled
     }
   }
@@ -346,7 +311,7 @@ struct AuthenticatedContainer: View {
     .tag(channel.id)
     .id(channel.id)
     .simultaneousGesture(TapGesture().onEnded {
-      withAnimation { controller.sidebarPath = [channel] }
+      withAnimation { controller.drillIntoChannel(channel, autoPlay: sizeClass != .compact) }
     })
     .listRowBackground(
       controller.selectedChannel?.id == channel.id
@@ -366,7 +331,7 @@ struct AuthenticatedContainer: View {
       focusBinding: $programListFocused,
       onBack: {
         channelSelection = controller.selectedChannel?.id
-        withAnimation { controller.sidebarPath = [] }
+        withAnimation { controller.navigateBack(stopPlayback: sizeClass == .compact) }
       },
       channelDescription: channel.displayDescription
     )
