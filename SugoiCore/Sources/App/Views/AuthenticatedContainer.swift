@@ -2,11 +2,12 @@ import SwiftUI
 
 // MARK: - Unified authenticated container
 
-/// 2-column NavigationSplitView for all platforms:
-/// sidebar = channel list, detail = program list + player.
+/// 3-column NavigationSplitView with `.prominentDetail` style:
+/// sidebar = channel list, content = program list, detail = player.
 ///
-/// On regular (Mac/iPad): detail is an HStack showing programs and player side by side.
-/// On compact (iPhone): detail is a NavigationStack pushing from programs → player.
+/// On regular (Mac/iPad): detail (player) fills the window; sidebar and content
+/// overlay on top as translucent panels that dismiss after selection.
+/// On compact (iPhone): detail wraps a NavigationStack for programs → player push.
 struct AuthenticatedContainer: View {
   let appState: AppState
   @State private var controller: ChannelPlaybackController
@@ -38,9 +39,12 @@ struct AuthenticatedContainer: View {
       sidebarContent
         .focused($sidebarFocused)
         .navigationSplitViewColumnWidth(min: 220, ideal: 280, max: 360)
+    } content: {
+      contentColumn
     } detail: {
       detailColumn
     }
+    .navigationSplitViewStyle(.prominentDetail)
     .task {
       // Phase 1: Select from cache and start playback immediately
       controller.selectFromCache()
@@ -51,6 +55,7 @@ struct AuthenticatedContainer: View {
         channelListSelection = controller.selectedChannel?.id
         showingPlayer = true
         preferredCompactColumn = .detail
+        columnVisibility = .detailOnly
       }
       focusChannelList()
 
@@ -65,6 +70,7 @@ struct AuthenticatedContainer: View {
         channelListSelection = controller.selectedChannel?.id
         showingPlayer = true
         preferredCompactColumn = .detail
+        columnVisibility = .detailOnly
       }
       focusChannelList()
     }
@@ -133,9 +139,10 @@ struct AuthenticatedContainer: View {
         .first { $0.id == newID }
       guard let channel, channel.id != controller.selectedChannel?.id else { return }
       controller.selectedChannel = channel
-      // On regular, auto-play when selecting a new channel
       if sizeClass == .regular {
+        // Auto-play live on channel selection, then collapse to player
         controller.playChannel(channel)
+        withAnimation { columnVisibility = .detailOnly }
       }
       // Reset player push when switching channels on compact
       showingPlayer = false
@@ -242,6 +249,7 @@ struct AuthenticatedContainer: View {
       guard let channel = controller.selectedChannel else { return .ignored }
       if sizeClass == .regular {
         controller.playChannel(channel)
+        withAnimation { columnVisibility = .detailOnly }
       }
       return .handled
     }
@@ -265,38 +273,35 @@ struct AuthenticatedContainer: View {
     }
   }
 
-  // MARK: - Detail
+  // MARK: - Content (program list)
+
+  @ViewBuilder
+  private var contentColumn: some View {
+    if let channel = controller.selectedChannel {
+      ProgramListView(
+        viewModel: controller.programListViewModel(for: channel),
+        playingProgramID: controller.playingProgramID,
+        onPlayLive: {
+          controller.playChannel(channel)
+          withAnimation { columnVisibility = .detailOnly }
+        },
+        onPlayVOD: { program in
+          controller.playVOD(program: program, channelName: channel.name)
+          withAnimation { columnVisibility = .detailOnly }
+        },
+        focusBinding: $programListFocused
+      )
+      .navigationTitle(channel.displayName)
+    } else {
+      ContentUnavailableView("Select a Channel", systemImage: "tv")
+    }
+  }
+
+  // MARK: - Detail (player)
 
   @ViewBuilder
   private var detailColumn: some View {
     if sizeClass == .regular {
-      regularDetail
-    } else {
-      compactDetail
-    }
-  }
-
-  /// Regular (Mac/iPad): programs and player side by side, like a 3-column layout.
-  /// Program list is visible when the sidebar is visible; both collapse together.
-  private var regularDetail: some View {
-    HStack(spacing: 0) {
-      if let channel = controller.selectedChannel, columnVisibility != .detailOnly {
-        ProgramListView(
-          viewModel: controller.programListViewModel(for: channel),
-          playingProgramID: controller.playingProgramID,
-          onPlayLive: {
-            controller.playChannel(channel)
-            withAnimation { columnVisibility = .detailOnly }
-          },
-          onPlayVOD: { program in
-            controller.playVOD(program: program, channelName: channel.name)
-            withAnimation { columnVisibility = .detailOnly }
-          },
-          focusBinding: $programListFocused
-        )
-        .navigationTitle(channel.displayName)
-        .frame(minWidth: 280, idealWidth: 320, maxWidth: 400)
-      }
       ZStack(alignment: .topLeading) {
         PlayerView(
           playerManager: controller.playerManager,
@@ -321,42 +326,40 @@ struct AuthenticatedContainer: View {
           withAnimation { columnVisibility = .detailOnly }
         }
       }
-    }
-  }
-
-  /// Compact (iPhone): NavigationStack with program list as root, player pushed when playing.
-  private var compactDetail: some View {
-    NavigationStack {
-      if let channel = controller.selectedChannel {
-        ProgramListView(
-          viewModel: controller.programListViewModel(for: channel),
-          playingProgramID: controller.playingProgramID,
-          onPlayLive: {
-            controller.playChannel(channel)
-            showingPlayer = true
-          },
-          onPlayVOD: { program in
-            controller.playVOD(program: program, channelName: channel.name)
-            showingPlayer = true
-          },
-          focusBinding: $programListFocused
-        )
-        .navigationTitle(channel.displayName)
-        .navigationDestination(isPresented: $showingPlayer) {
-          PlayerView(
-            playerManager: controller.playerManager,
-            loadingTitle: controller.loadingTitle,
-            loadingThumbnailURL: controller.selectedChannel.flatMap {
-              StreamURLBuilder.thumbnailURL(
-                channelListHost: controller.channelListVM.config.channelListHost,
-                playpath: $0.playpath
-              )
-            }
+    } else {
+      // Compact (iPhone): NavigationStack with programs → player
+      NavigationStack {
+        if let channel = controller.selectedChannel {
+          ProgramListView(
+            viewModel: controller.programListViewModel(for: channel),
+            playingProgramID: controller.playingProgramID,
+            onPlayLive: {
+              controller.playChannel(channel)
+              showingPlayer = true
+            },
+            onPlayVOD: { program in
+              controller.playVOD(program: program, channelName: channel.name)
+              showingPlayer = true
+            },
+            focusBinding: $programListFocused
           )
-          .ignoresSafeArea()
+          .navigationTitle(channel.displayName)
+          .navigationDestination(isPresented: $showingPlayer) {
+            PlayerView(
+              playerManager: controller.playerManager,
+              loadingTitle: controller.loadingTitle,
+              loadingThumbnailURL: controller.selectedChannel.flatMap {
+                StreamURLBuilder.thumbnailURL(
+                  channelListHost: controller.channelListVM.config.channelListHost,
+                  playpath: $0.playpath
+                )
+              }
+            )
+            .ignoresSafeArea()
+          }
+        } else {
+          ContentUnavailableView("Select a Channel", systemImage: "tv")
         }
-      } else {
-        ContentUnavailableView("Select a Channel", systemImage: "tv")
       }
     }
   }
