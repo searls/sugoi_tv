@@ -234,21 +234,14 @@ public struct ProgramListView: View {
     playingProgramID: String? = nil,
     onPlayLive: @escaping () -> Void,
     onPlayVOD: @escaping (ProgramDTO) -> Void,
-    focusBinding: FocusState<Bool>.Binding? = nil,
-    onBack: (() -> Void)? = nil,
-    channelDescription: String? = nil
+    focusBinding: FocusState<Bool>.Binding? = nil
   ) {
     self.viewModel = viewModel
     self.playingProgramID = playingProgramID
     self.onPlayLive = onPlayLive
     self.onPlayVOD = onPlayVOD
     self.focusBinding = focusBinding
-    self.onBack = onBack
-    self.channelDescription = channelDescription
   }
-
-  var onBack: (() -> Void)?
-  var channelDescription: String?
 
   public var body: some View {
     Group {
@@ -278,7 +271,6 @@ public struct ProgramListView: View {
   private var programList: some View {
     ScrollViewReader { proxy in
       List(selection: $selectedProgramID) {
-        backHeader
         upcomingSection
         liveSection
         pastSections
@@ -324,37 +316,6 @@ public struct ProgramListView: View {
       DispatchQueue.main.async {
         binding.wrappedValue = true
       }
-    }
-  }
-
-  // MARK: - Back header
-
-  @ViewBuilder
-  private var backHeader: some View {
-    if let onBack {
-      HStack(spacing: 12) {
-        Button(action: onBack) {
-          Image(systemName: "chevron.backward")
-            .font(.body.weight(.semibold))
-            .foregroundStyle(.secondary)
-            .frame(width: 32, height: 32)
-            .background(.fill.tertiary, in: Circle())
-        }
-        .buttonStyle(.plain)
-
-        VStack(alignment: .leading, spacing: 2) {
-          Text(viewModel.channelName)
-            .font(.title2.bold())
-          if let desc = channelDescription, !desc.isEmpty {
-            Text(desc)
-              .font(.caption)
-              .foregroundStyle(.secondary)
-          }
-        }
-      }
-      .listRowSeparator(.hidden)
-      .listRowBackground(Color.clear)
-      .listRowInsets(EdgeInsets(top: 8, leading: 8, bottom: 8, trailing: 8))
     }
   }
 

@@ -60,11 +60,11 @@ struct ChannelPlaybackControllerAutoSelectTests {
   func reSelectsWhenChannelDisappears() async throws {
     let controller = try ControllerTestFixtures.makeController()
     // Pre-set a channel that won't exist in the fresh response
-    controller.setSelectedChannelForTesting(ChannelDTO(
+    controller.selectedChannel = ChannelDTO(
       id: "REMOVED", uid: nil, name: "Gone Channel", description: nil, tags: nil,
       no: 99, timeshift: nil, timeshiftLen: nil, epgKeepDays: nil, state: nil,
       running: nil, playpath: "/gone", liveType: nil
-    ))
+    )
     controller.persistence.lastChannelId = ""
 
     await controller.loadAndAutoSelect()
@@ -106,39 +106,16 @@ struct ChannelPlaybackControllerSidebarCollapseTests {
   }
 }
 
-@Suite("ChannelPlaybackController.preferredCompactColumn")
-@MainActor
-struct ChannelPlaybackControllerCompactColumnTests {
-  @Test("Starts on sidebar column for compact layouts")
-  func startsOnSidebar() throws {
-    let controller = try ControllerTestFixtures.makeController()
-    #expect(controller.preferredCompactColumn == .sidebar)
-  }
-
-  @Test("Switches to detail column when playing a channel")
-  func switchesToDetailOnPlay() async throws {
-    let controller = try ControllerTestFixtures.makeController()
-    #expect(controller.preferredCompactColumn == .sidebar)
-
-    await controller.loadAndAutoSelect()
-    // autoSelectChannel no longer auto-plays; explicitly play
-    controller.playChannel(controller.selectedChannel!)
-
-    #expect(controller.preferredCompactColumn == .detail)
-  }
-}
-
 @Suite("ChannelPlaybackController.playVOD")
 @MainActor
 struct ChannelPlaybackControllerPlayVODTests {
-  @Test("playVOD loads VOD stream and switches to detail column")
+  @Test("playVOD loads VOD stream")
   func playVODLoadsStream() throws {
     let controller = try ControllerTestFixtures.makeController()
     let program = ProgramDTO(time: 1000, title: "Past Show", path: "/query/past_show")
 
     controller.playVOD(program: program, channelName: "NHK")
 
-    #expect(controller.preferredCompactColumn == .detail)
     #expect(controller.playerManager.state != .idle)
   }
 
@@ -149,7 +126,6 @@ struct ChannelPlaybackControllerPlayVODTests {
 
     controller.playVOD(program: program, channelName: "NHK")
 
-    #expect(controller.preferredCompactColumn == .sidebar)
     #expect(controller.playerManager.state == .idle)
   }
 
@@ -216,45 +192,24 @@ struct ChannelPlaybackControllerReplayTests {
     #expect(controller.persistence.lastPlayingChannelName == "NHK総合")
   }
 
-  @Test("Replays live when live was playing via sidebarPath")
-  func replaysLiveFromSidebarPath() throws {
+  @Test("Replays live when live was playing")
+  func replaysLive() throws {
     let controller = try ControllerTestFixtures.makeController()
     let channel = ChannelDTO(
       id: "CH1", uid: nil, name: "NHK総合", description: nil, tags: nil,
       no: 1, timeshift: nil, timeshiftLen: nil, epgKeepDays: nil, state: nil,
       running: 1, playpath: "/query/s/nhk", liveType: nil
     )
-    controller.sidebarPath = [channel]
+    controller.selectedChannel = channel
     controller.playChannel(channel)
 
     #expect(controller.playingProgramID == nil)
 
     controller.replayCurrentStream()
 
-    #expect(controller.playingProgramID == nil)
-    #expect(controller.persistence.lastPlayingProgramID == "")
-  }
-
-  @Test("Replays live using selectedChannel when sidebarPath is empty")
-  func replaysLiveFromSelectedChannel() throws {
-    let controller = try ControllerTestFixtures.makeController()
-    let channel = ChannelDTO(
-      id: "CH1", uid: nil, name: "NHK総合", description: nil, tags: nil,
-      no: 1, timeshift: nil, timeshiftLen: nil, epgKeepDays: nil, state: nil,
-      running: 1, playpath: "/query/s/nhk", liveType: nil
-    )
-    controller.setSelectedChannelForTesting(channel)
-    controller.playChannel(channel)
-
-    // sidebarPath is empty — playing live from channel list
-    #expect(controller.sidebarPath.isEmpty)
-    #expect(controller.playingProgramID == nil)
-
-    controller.replayCurrentStream()
-
-    // Should still replay via selectedChannel fallback
     #expect(controller.playerManager.state != .idle)
     #expect(controller.playingProgramID == nil)
+    #expect(controller.persistence.lastPlayingProgramID == "")
   }
 
   @Test("Preserves persisted VOD position on replay")
@@ -276,7 +231,6 @@ struct ChannelPlaybackControllerReplayTests {
     let controller = try ControllerTestFixtures.makeController()
 
     #expect(controller.playingProgramID == nil)
-    #expect(controller.sidebarPath.isEmpty)
     #expect(controller.selectedChannel == nil)
 
     controller.replayCurrentStream()
@@ -285,24 +239,9 @@ struct ChannelPlaybackControllerReplayTests {
   }
 }
 
-@Suite("ChannelPlaybackController.sidebarPath")
+@Suite("ChannelPlaybackController.programListViewModel")
 @MainActor
-struct ChannelPlaybackControllerSidebarPathTests {
-  @Test("sidebarPath starts empty")
-  func startsEmpty() throws {
-    let controller = try ControllerTestFixtures.makeController()
-    #expect(controller.sidebarPath.isEmpty)
-  }
-
-  @Test("loadAndAutoSelect selects channel without drilling into program list")
-  func autoSelectStaysOnChannelList() async throws {
-    let controller = try ControllerTestFixtures.makeController()
-    await controller.loadAndAutoSelect()
-
-    #expect(controller.selectedChannel != nil)
-    #expect(controller.sidebarPath.isEmpty)
-  }
-
+struct ChannelPlaybackControllerProgramListVMTests {
   @Test("programListViewModel creates and caches viewmodel for channel")
   func programListVM() async throws {
     let controller = try ControllerTestFixtures.makeController()
