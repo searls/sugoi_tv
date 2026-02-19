@@ -311,6 +311,7 @@ struct AuthenticatedContainer: View {
     .tag(channel.id)
     .id(channel.id)
     .simultaneousGesture(TapGesture().onEnded {
+      channelSelection = channel.id
       withAnimation { controller.drillIntoChannel(channel, autoPlay: sizeClass != .compact) }
     })
     .listRowBackground(
