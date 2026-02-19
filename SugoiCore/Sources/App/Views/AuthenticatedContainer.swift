@@ -248,6 +248,25 @@ struct AuthenticatedContainer: View {
       } actions: {
         Button("Retry") { Task { await controller.channelListVM.loadChannels() } }
       }
+    } else if sizeClass == .compact {
+      ScrollViewReader { proxy in
+        ChannelGridView(
+          channelGroups: controller.channelListVM.filteredGroups,
+          channelListHost: controller.channelListVM.config.channelListHost,
+          onSelectChannel: { channel in
+            channelSelection = channel.id
+            withAnimation { controller.drillIntoChannel(channel, autoPlay: false) }
+          }
+        )
+        .onAppear { scrollToSelected(proxy: proxy) }
+        .onChange(of: controller.selectedChannel?.id) { _, _ in
+          Task { @MainActor in
+            await Task.yield()
+            scrollToSelected(proxy: proxy)
+          }
+        }
+      }
+      .accessibilityIdentifier("channelList")
     } else {
       ScrollViewReader { proxy in
         channelListList
