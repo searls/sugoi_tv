@@ -31,7 +31,7 @@ done
 resolve_destination() {
   case "$1" in
     mac)     echo "platform=macOS" ;;
-    iphone)  echo "platform=iOS Simulator,name=iPhone 17 Pro" ;;
+    iphone)  echo "platform=iOS Simulator,name=iPhone 16 Pro" ;;
     ipad)    echo "platform=iOS Simulator,name=iPad Pro 13-inch (M5)" ;;
     appletv) echo "platform=tvOS Simulator,name=Apple TV 4K (3rd generation)" ;;
     *)       echo "Unknown platform: $1" >&2; exit 1 ;;
@@ -40,7 +40,7 @@ resolve_destination() {
 
 resolve_sim_name() {
   case "$1" in
-    iphone)  echo "iPhone 17 Pro" ;;
+    iphone)  echo "iPhone 16 Pro" ;;
     ipad)    echo "iPad Pro 13-inch (M5)" ;;
     appletv) echo "Apple TV 4K (3rd generation)" ;;
   esac
