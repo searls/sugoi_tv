@@ -173,6 +173,7 @@ struct ChannelRow: View {
       Spacer()
     }
     .padding(.vertical, 2)
+    .contentShape(Rectangle())
   }
 }
 

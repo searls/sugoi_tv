@@ -366,7 +366,10 @@ public struct ProgramListView: View {
       Section("Live") {
         ProgramRow(entry: current, isLive: true, isPlaying: playingProgramID == nil)
           .listRowBackground(playingProgramID == nil ? Color.accentColor.opacity(0.15) : nil)
-          .simultaneousGesture(TapGesture().onEnded { onPlayLive() })
+          .simultaneousGesture(TapGesture().onEnded {
+            selectedProgramID = current.id
+            onPlayLive()
+          })
           .tag(current.id)
           .id(current.id)
       }
@@ -399,6 +402,7 @@ public struct ProgramListView: View {
           ProgramRow(entry: entry, hasVOD: entry.hasVOD, isPlaying: playing)
             .listRowBackground(playing ? Color.accentColor.opacity(0.15) : nil)
             .simultaneousGesture(TapGesture().onEnded {
+              selectedProgramID = entry.id
               if entry.hasVOD { onPlayVOD(entry) }
             })
             .tag(entry.id)
@@ -469,6 +473,7 @@ struct ProgramRow: View {
         .lineLimit(2)
     }
     .padding(.vertical, 2)
+    .frame(maxWidth: .infinity, alignment: .leading)
     .contentShape(Rectangle())
   }
 
