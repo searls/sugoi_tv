@@ -9,6 +9,7 @@ struct ChannelCardView: View {
   var body: some View {
     thumbnail
       .aspectRatio(11.0 / 8.0, contentMode: .fit)
+      .clipped()
       .clipShape(RoundedRectangle(cornerRadius: 12))
       .accessibilityLabel(channel.displayName)
   }

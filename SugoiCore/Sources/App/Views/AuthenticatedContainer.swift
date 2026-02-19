@@ -266,6 +266,7 @@ struct AuthenticatedContainer: View {
           }
         }
       }
+      .navigationTitle("Channels")
       .accessibilityIdentifier("channelList")
     } else {
       ScrollViewReader { proxy in
