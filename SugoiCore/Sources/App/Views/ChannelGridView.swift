@@ -7,11 +7,30 @@ struct ChannelCardView: View {
   let thumbnailURL: URL?
 
   var body: some View {
-    thumbnail
-      .aspectRatio(11.0 / 8.0, contentMode: .fit)
-      .clipped()
-      .clipShape(RoundedRectangle(cornerRadius: 12))
-      .accessibilityLabel(channel.displayName)
+    VStack(alignment: .leading, spacing: 0) {
+      thumbnail
+        .aspectRatio(11.0 / 8.0, contentMode: .fill)
+        .clipped()
+
+      Text(channel.displayName)
+        .font(.caption)
+        .fontWeight(.medium)
+        .lineLimit(1)
+        .truncationMode(.tail)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+    .background(
+      RoundedRectangle(cornerRadius: 12, style: .continuous)
+        .fill(.background.shadow(.drop(color: .black.opacity(0.15), radius: 4, y: 2)))
+    )
+    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    .overlay(
+      RoundedRectangle(cornerRadius: 12, style: .continuous)
+        .stroke(.quaternary, lineWidth: 0.5)
+    )
+    .accessibilityLabel(channel.displayName)
   }
 
   @ViewBuilder
@@ -40,12 +59,13 @@ struct ChannelCardView: View {
   }
 
   private var fallbackView: some View {
-    RoundedRectangle(cornerRadius: 12)
-      .fill(.quaternary)
+    Color.clear
+      .aspectRatio(11.0 / 8.0, contentMode: .fill)
       .overlay {
         Text(channel.displayName)
           .font(.caption2)
           .multilineTextAlignment(.center)
+          .foregroundStyle(.secondary)
           .padding(4)
       }
   }
@@ -78,8 +98,8 @@ struct ChannelGridView: View {
   var body: some View {
     ScrollView {
       LazyVGrid(
-        columns: [GridItem(.adaptive(minimum: 120), spacing: 12)],
-        spacing: 16
+        columns: [GridItem(.adaptive(minimum: 140), spacing: 16)],
+        spacing: 20
       ) {
         ForEach(channelGroups, id: \.category) { group in
           Section {
