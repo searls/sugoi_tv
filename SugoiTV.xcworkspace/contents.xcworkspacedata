@@ -11,6 +11,9 @@
       location = "group:YoiTVProvider">
    </FileRef>
    <FileRef
+      location = "group:IPTVProvider">
+   </FileRef>
+   <FileRef
       location = "group:TestPlans/SugoiTV-Full.xctestplan">
    </FileRef>
 </Workspace>

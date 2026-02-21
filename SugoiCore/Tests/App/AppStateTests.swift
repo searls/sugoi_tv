@@ -54,12 +54,12 @@ struct AppStateLoginTests {
     #expect(appState.isAuthenticated == true)
   }
 
-  @Test("Convenience login with cid and password")
-  func loginConvenience() async throws {
+  @Test("Login with credentials dictionary")
+  func loginCredentials() async throws {
     let mock = MockTVProvider()
     let appState = AppState(provider: mock)
 
-    try await appState.login(cid: "test", password: "pass")
+    try await appState.login(credentials: ["cid": "test", "password": "pass"])
 
     #expect(appState.isAuthenticated == true)
   }

@@ -64,11 +64,6 @@ public final class AppState {
     await activeProvider.startAutoRefresh()
   }
 
-  /// Convenience for the two-field YoiTV login form.
-  public func login(cid: String, password: String) async throws {
-    try await login(credentials: ["cid": cid, "password": password])
-  }
-
   /// Attempt silent re-authentication using stored credentials.
   /// Returns true on success, false on failure.
   public func reauthenticate() async -> Bool {

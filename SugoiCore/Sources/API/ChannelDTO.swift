@@ -16,6 +16,36 @@ public struct ChannelDTO: Codable, Sendable, Hashable, Identifiable {
   public let playpath: String
   public let liveType: String?
 
+  public init(
+    id: String,
+    uid: String? = nil,
+    name: String,
+    description: String? = nil,
+    tags: String? = nil,
+    no: Int,
+    timeshift: Int? = nil,
+    timeshiftLen: Int? = nil,
+    epgKeepDays: Int? = nil,
+    state: Int? = nil,
+    running: Int? = nil,
+    playpath: String,
+    liveType: String? = nil
+  ) {
+    self.id = id
+    self.uid = uid
+    self.name = name
+    self.description = description
+    self.tags = tags
+    self.no = no
+    self.timeshift = timeshift
+    self.timeshiftLen = timeshiftLen
+    self.epgKeepDays = epgKeepDays
+    self.state = state
+    self.running = running
+    self.playpath = playpath
+    self.liveType = liveType
+  }
+
   enum CodingKeys: String, CodingKey {
     case id, uid, name, description, tags, no, timeshift
     case timeshiftLen = "timeshift_len"

@@ -19,10 +19,12 @@ public struct SugoiTVRootView: View {
         #else
         LoginView(
           viewModel: LoginViewModel(
-            loginAction: { cid, password in
-              try await appState.login(cid: cid, password: password)
+            loginFields: appState.activeProvider.loginFields,
+            loginAction: { credentials in
+              try await appState.login(credentials: credentials)
             }
-          )
+          ),
+          providerName: appState.activeProvider.displayName
         )
         #endif
       }
@@ -41,7 +43,7 @@ private struct MacSignedOutPlaceholder: View {
     ContentUnavailableView {
       Label("Not Signed In", systemImage: "person.crop.circle.badge.questionmark")
     } description: {
-      Text("Open Settings to sign in to your YoiTV account.")
+      Text("Open Settings to sign in.")
     } actions: {
       Button("Open Settings…") {
         openSettings()

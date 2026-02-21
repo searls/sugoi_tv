@@ -6,6 +6,12 @@ public struct ProgramDTO: Codable, Sendable, Equatable, Identifiable {
   public let title: String
   public let path: String  // Empty string = live-only (no VOD recording)
 
+  public init(time: Int, title: String, path: String = "") {
+    self.time = time
+    self.title = title
+    self.path = path
+  }
+
   /// VOD programs use path as ID; live-only programs fall back to time.
   public var id: String { path.isEmpty ? "live-\(time)" : path }
 

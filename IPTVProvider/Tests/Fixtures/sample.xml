@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<tv>
+  <channel id="NHK.jp">
+    <display-name>NHK General</display-name>
+  </channel>
+  <channel id="TBS.jp">
+    <display-name>TBS</display-name>
+  </channel>
+  <programme start="20250101090000 +0900" stop="20250101100000 +0900" channel="NHK.jp">
+    <title>Morning News</title>
+  </programme>
+  <programme start="20250101100000 +0900" stop="20250101110000 +0900" channel="NHK.jp">
+    <title>Weather Report</title>
+  </programme>
+  <programme start="20250101090000 +0900" stop="20250101103000 +0900" channel="TBS.jp">
+    <title>Morning Show</title>
+  </programme>
+</tv>

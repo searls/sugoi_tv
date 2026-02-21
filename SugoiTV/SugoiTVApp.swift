@@ -1,3 +1,4 @@
+import IPTVProvider
 import SugoiCore
 import SwiftUI
 import YoiTVProvider
@@ -11,7 +12,8 @@ struct SugoiTVApp: App {
     let keychain = KeychainService()
     let apiClient = APIClient()
     let provider = YoiTVProviderAdapter(keychain: keychain, apiClient: apiClient)
-    return AppState(providers: [provider])
+    let iptv = IPTVProvider()
+    return AppState(providers: [provider, iptv])
   }()
   #if os(macOS)
   @AppStorage("sidebarVisible") private var sidebarVisible = true

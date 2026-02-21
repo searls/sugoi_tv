@@ -4,26 +4,43 @@ import SwiftUI
 @MainActor
 @Observable
 public final class LoginViewModel {
-  var customerID: String = ""
-  var password: String = ""
+  var fieldValues: [String: String]
   var isLoading: Bool = false
   var errorMessage: String?
 
-  private let loginAction: (String, String) async throws -> Void
+  let loginFields: [LoginField]
+  private let loginAction: ([String: String]) async throws -> Void
 
-  public init(loginAction: @escaping (String, String) async throws -> Void) {
+  public init(
+    loginFields: [LoginField],
+    loginAction: @escaping ([String: String]) async throws -> Void
+  ) {
+    self.loginFields = loginFields
     self.loginAction = loginAction
+    var defaults: [String: String] = [:]
+    for field in loginFields {
+      defaults[field.key] = field.defaultValue
+    }
+    self.fieldValues = defaults
   }
 
-  func loginWithCredentials(cid: String, password: String) async {
-    customerID = cid
-    self.password = password
+  func fillCredentials(username: String, password: String) async {
+    for field in loginFields {
+      switch field.contentType {
+      case .username: fieldValues[field.key] = username
+      case .password: fieldValues[field.key] = password
+      default: break
+      }
+    }
     await login()
   }
 
   func login() async {
-    guard !customerID.isEmpty, !password.isEmpty else {
-      errorMessage = "Please enter your customer ID and password."
+    let hasEmptyRequired = loginFields.contains { field in
+      (fieldValues[field.key] ?? "").isEmpty
+    }
+    guard !hasEmptyRequired else {
+      errorMessage = "Please fill in all fields."
       return
     }
 
@@ -31,23 +48,31 @@ public final class LoginViewModel {
     errorMessage = nil
 
     do {
-      try await loginAction(customerID, password)
+      try await loginAction(fieldValues)
     } catch {
       errorMessage = "Login failed. Please check your credentials and try again."
     }
 
     isLoading = false
   }
+
+  /// Whether this form has both username and password fields (for autofill).
+  var supportsPasswordAutofill: Bool {
+    let types = Set(loginFields.map(\.contentType))
+    return types.contains(.username) && types.contains(.password)
+  }
 }
 
 public struct LoginView: View {
   @Bindable var viewModel: LoginViewModel
+  let providerName: String
   #if os(iOS) || os(tvOS)
   @Environment(\.authorizationController) private var authorizationController
   #endif
 
-  public init(viewModel: LoginViewModel) {
+  public init(viewModel: LoginViewModel, providerName: String = "") {
     self.viewModel = viewModel
+    self.providerName = providerName
   }
 
   public var body: some View {
@@ -56,22 +81,16 @@ public struct LoginView: View {
         .font(.largeTitle)
         .fontWeight(.bold)
 
-      Text("YoiTV")
-        .font(.subheadline)
-        .foregroundStyle(.secondary)
+      if !providerName.isEmpty {
+        Text(providerName)
+          .font(.subheadline)
+          .foregroundStyle(.secondary)
+      }
 
       VStack(spacing: 16) {
-        TextField("Customer ID", text: $viewModel.customerID)
-          .textContentType(.username)
-          #if os(iOS)
-          .textInputAutocapitalization(.never)
-          .keyboardType(.asciiCapable)
-          #endif
-          .autocorrectionDisabled()
-
-        SecureField("Password", text: $viewModel.password)
-          .textContentType(.password)
-          .onSubmit { Task { await viewModel.login() } }
+        ForEach(viewModel.loginFields) { field in
+          fieldView(for: field)
+        }
       }
       .textFieldStyle(.roundedBorder)
 
@@ -100,9 +119,47 @@ public struct LoginView: View {
     .frame(maxWidth: 400)
     #if os(iOS) || os(tvOS)
     .task {
-      await requestSavedCredentials()
+      if viewModel.supportsPasswordAutofill {
+        await requestSavedCredentials()
+      }
     }
     #endif
+  }
+
+  @ViewBuilder
+  private func fieldView(for field: LoginField) -> some View {
+    let binding = Binding(
+      get: { viewModel.fieldValues[field.key] ?? "" },
+      set: { viewModel.fieldValues[field.key] = $0 }
+    )
+
+    switch field.contentType {
+    case .password:
+      SecureField(field.label, text: binding)
+        .textContentType(.password)
+        .onSubmit { Task { await viewModel.login() } }
+    case .url:
+      TextField(field.label, text: binding)
+        #if os(iOS)
+        .textInputAutocapitalization(.never)
+        .keyboardType(.URL)
+        #endif
+        .autocorrectionDisabled()
+    case .username:
+      TextField(field.label, text: binding)
+        .textContentType(.username)
+        #if os(iOS)
+        .textInputAutocapitalization(.never)
+        .keyboardType(.asciiCapable)
+        #endif
+        .autocorrectionDisabled()
+    case .text:
+      TextField(field.label, text: binding)
+        #if os(iOS)
+        .textInputAutocapitalization(.never)
+        #endif
+        .autocorrectionDisabled()
+    }
   }
 
   #if os(iOS) || os(tvOS)
@@ -111,8 +168,8 @@ public struct LoginView: View {
     do {
       let result = try await authorizationController.performAutoFillAssistedRequest(request)
       if case .password(let credential) = result {
-        await viewModel.loginWithCredentials(
-          cid: credential.user, password: credential.password
+        await viewModel.fillCredentials(
+          username: credential.user, password: credential.password
         )
       }
     } catch {

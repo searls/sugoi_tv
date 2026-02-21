@@ -1,0 +1,9 @@
+#EXTM3U x-tvg-url="http://example.com/epg.xml"
+#EXTINF:-1 tvg-id="NHK.jp" tvg-name="NHK General" tvg-logo="http://example.com/nhk.png" group-title="News" tvg-chno="1",NHK General TV
+http://example.com/stream/nhk.m3u8
+#EXTINF:-1 tvg-id="TBS.jp" tvg-name="TBS" tvg-logo="http://example.com/tbs.png" group-title="Entertainment" tvg-chno="6",TBS Television
+http://example.com/stream/tbs.m3u8
+#EXTINF:-1 tvg-id="NTV.jp" tvg-name="NTV" group-title="News",Nippon Television
+http://example.com/stream/ntv.m3u8
+#EXTINF:-1 tvg-name="No ID Channel" group-title="Entertainment" tvg-chno="10",No ID Channel
+http://example.com/stream/noid.m3u8

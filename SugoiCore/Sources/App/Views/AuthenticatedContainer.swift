@@ -18,6 +18,8 @@ struct AuthenticatedContainer: View {
   @State private var channelSelection: String?
   #if os(macOS)
   @Environment(\.openSettings) private var openSettings
+  #else
+  @State private var showSettings = false
   #endif
 
   init(appState: AppState) {
@@ -176,19 +178,28 @@ struct AuthenticatedContainer: View {
   }
 
   private var sidebarContent: some View {
-    VStack(spacing: 0) {
-      sidebarNavigation
-
+    sidebarNavigation
       #if !os(macOS)
-      Divider()
-      Button("Sign Out") {
-        Task { await appState.logout() }
+      .toolbar {
+        ToolbarItem(placement: .topBarTrailing) {
+          Button { showSettings = true } label: {
+            Image(systemName: "gearshape")
+          }
+          .accessibilityIdentifier("settingsButton")
+        }
       }
-      .accessibilityIdentifier("signOutButton")
-      .padding()
-      .frame(maxWidth: .infinity, alignment: .leading)
+      .sheet(isPresented: $showSettings) {
+        NavigationStack {
+          SettingsView(appState: appState)
+            .navigationTitle("Settings")
+            .toolbar {
+              ToolbarItem(placement: .confirmationAction) {
+                Button("Done") { showSettings = false }
+              }
+            }
+        }
+      }
       #endif
-    }
   }
 
   // MARK: Sidebar navigation
