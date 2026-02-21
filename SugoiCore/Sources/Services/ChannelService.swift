@@ -4,13 +4,18 @@ import SwiftData
 /// Fetches and caches the channel list from the VMS API
 public actor ChannelService {
   private let apiClient: any APIClientProtocol
+  private let config: ProductConfig
+  /// Exposed for thumbnail URL construction without crossing actor boundary.
+  public nonisolated let channelListHost: String
 
-  public init(apiClient: any APIClientProtocol) {
+  public init(apiClient: any APIClientProtocol, config: ProductConfig) {
     self.apiClient = apiClient
+    self.config = config
+    self.channelListHost = config.channelListHost
   }
 
   /// Fetch all channels from the API
-  public func fetchChannels(config: ProductConfig) async throws -> [ChannelDTO] {
+  public func fetchChannels() async throws -> [ChannelDTO] {
     let url = YoiTVEndpoints.channelListURL(config: config)
     let response: ChannelListResponse = try await apiClient.get(url: url)
     guard response.code == "OK" else {
@@ -22,10 +27,9 @@ public actor ChannelService {
   /// Fetch channels and upsert into SwiftData
   @MainActor
   public func syncChannels(
-    config: ProductConfig,
     modelContext: ModelContext
   ) async throws -> [Channel] {
-    let dtos = try await fetchChannels(config: config)
+    let dtos = try await fetchChannels()
 
     // Fetch existing channels for upsert
     let descriptor = FetchDescriptor<Channel>()
@@ -48,8 +52,22 @@ public actor ChannelService {
     return result.sorted { $0.no < $1.no }
   }
 
+  /// Thumbnail URL for a channel (no auth required)
+  public nonisolated func thumbnailURL(for channel: ChannelDTO) -> URL? {
+    StreamURLBuilder.thumbnailURL(
+      channelListHost: channelListHost,
+      playpath: channel.playpath
+    )
+  }
+
+  /// Default YoiTV category ordering.
+  public static let defaultCategoryOrder = ["関東", "関西", "BS", "Others"]
+
   /// Group channels by their primary category
-  public static func groupByCategory(_ channels: [ChannelDTO]) -> [(category: String, channels: [ChannelDTO])] {
+  public static func groupByCategory(
+    _ channels: [ChannelDTO],
+    categoryOrder: [String] = defaultCategoryOrder
+  ) -> [(category: String, channels: [ChannelDTO])] {
     var groups: [String: [ChannelDTO]] = [:]
     for channel in channels {
       let category = channel.primaryCategory
@@ -57,7 +75,6 @@ public actor ChannelService {
     }
 
     // Sort categories in a stable order
-    let categoryOrder = ["関東", "関西", "BS", "Others"]
     return categoryOrder.compactMap { category in
       guard let channels = groups[category] else { return nil }
       return (category: category, channels: channels)

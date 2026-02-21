@@ -40,8 +40,8 @@ struct ChannelListViewModelTests {
   @MainActor
   func loadChannels() async {
     let mock = makeMock()
-    let service = ChannelService(apiClient: APIClient(session: mock.session))
-    let vm = ChannelListViewModel(channelService: service, config: Self.testConfig)
+    let service = ChannelService(apiClient: APIClient(session: mock.session), config: Self.testConfig)
+    let vm = ChannelListViewModel(channelService: service)
 
     await vm.loadChannels()
 
@@ -57,8 +57,8 @@ struct ChannelListViewModelTests {
   @MainActor
   func searchByName() async {
     let mock = makeMock()
-    let service = ChannelService(apiClient: APIClient(session: mock.session))
-    let vm = ChannelListViewModel(channelService: service, config: Self.testConfig)
+    let service = ChannelService(apiClient: APIClient(session: mock.session), config: Self.testConfig)
+    let vm = ChannelListViewModel(channelService: service)
 
     await vm.loadChannels()
     vm.searchText = "NHK"
@@ -73,8 +73,8 @@ struct ChannelListViewModelTests {
   @MainActor
   func searchByDescription() async {
     let mock = makeMock()
-    let service = ChannelService(apiClient: APIClient(session: mock.session))
-    let vm = ChannelListViewModel(channelService: service, config: Self.testConfig)
+    let service = ChannelService(apiClient: APIClient(session: mock.session), config: Self.testConfig)
+    let vm = ChannelListViewModel(channelService: service)
 
     await vm.loadChannels()
     vm.searchText = "Asahi"
@@ -88,8 +88,8 @@ struct ChannelListViewModelTests {
   @MainActor
   func emptySearchReturnsAll() async {
     let mock = makeMock()
-    let service = ChannelService(apiClient: APIClient(session: mock.session))
-    let vm = ChannelListViewModel(channelService: service, config: Self.testConfig)
+    let service = ChannelService(apiClient: APIClient(session: mock.session), config: Self.testConfig)
+    let vm = ChannelListViewModel(channelService: service)
 
     await vm.loadChannels()
     vm.searchText = ""
@@ -101,14 +101,14 @@ struct ChannelListViewModelTests {
   @MainActor
   func thumbnailURLFromConfig() async {
     let mock = makeMock()
-    let service = ChannelService(apiClient: APIClient(session: mock.session))
-    let vm = ChannelListViewModel(channelService: service, config: Self.testConfig)
+    let service = ChannelService(apiClient: APIClient(session: mock.session), config: Self.testConfig)
+    let vm = ChannelListViewModel(channelService: service)
 
     await vm.loadChannels()
 
     let channel = vm.channelGroups[0].channels[0]
     let url = StreamURLBuilder.thumbnailURL(
-      channelListHost: vm.config.channelListHost,
+      channelListHost: vm.channelService.channelListHost,
       playpath: channel.playpath
     )
     #expect(url != nil)
@@ -120,15 +120,15 @@ struct ChannelListViewModelTests {
   @MainActor
   func distinctThumbnailURLsPerChannel() async {
     let mock = makeMock()
-    let service = ChannelService(apiClient: APIClient(session: mock.session))
-    let vm = ChannelListViewModel(channelService: service, config: Self.testConfig)
+    let service = ChannelService(apiClient: APIClient(session: mock.session), config: Self.testConfig)
+    let vm = ChannelListViewModel(channelService: service)
 
     await vm.loadChannels()
 
     let allChannels = vm.channelGroups.flatMap(\.channels)
     let urls = allChannels.compactMap {
       StreamURLBuilder.thumbnailURL(
-        channelListHost: vm.config.channelListHost,
+        channelListHost: vm.channelService.channelListHost,
         playpath: $0.playpath
       )
     }
@@ -140,14 +140,14 @@ struct ChannelListViewModelTests {
   @MainActor
   func channelRowReceivesThumbnailURL() async {
     let mock = makeMock()
-    let service = ChannelService(apiClient: APIClient(session: mock.session))
-    let vm = ChannelListViewModel(channelService: service, config: Self.testConfig)
+    let service = ChannelService(apiClient: APIClient(session: mock.session), config: Self.testConfig)
+    let vm = ChannelListViewModel(channelService: service)
 
     await vm.loadChannels()
 
     let channel = vm.channelGroups[0].channels[0]
     let expectedURL = StreamURLBuilder.thumbnailURL(
-      channelListHost: vm.config.channelListHost,
+      channelListHost: vm.channelService.channelListHost,
       playpath: channel.playpath
     )
     let row = ChannelRow(channel: channel, thumbnailURL: expectedURL)
@@ -162,8 +162,8 @@ struct ChannelListViewModelTests {
   @MainActor
   func channelRowNilThumbnail() async {
     let mock = makeMock()
-    let service = ChannelService(apiClient: APIClient(session: mock.session))
-    let vm = ChannelListViewModel(channelService: service, config: Self.testConfig)
+    let service = ChannelService(apiClient: APIClient(session: mock.session), config: Self.testConfig)
+    let vm = ChannelListViewModel(channelService: service)
 
     await vm.loadChannels()
 
@@ -181,8 +181,8 @@ struct ChannelListViewModelTests {
       throw URLError(.notConnectedToInternet)
     }
 
-    let service = ChannelService(apiClient: APIClient(session: mock.session))
-    let vm = ChannelListViewModel(channelService: service, config: Self.testConfig)
+    let service = ChannelService(apiClient: APIClient(session: mock.session), config: Self.testConfig)
+    let vm = ChannelListViewModel(channelService: service)
 
     await vm.loadChannels()
 

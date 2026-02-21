@@ -30,14 +30,12 @@ public final class ProgramListViewModel {
   nonisolated static let initialMaxDays = 7
 
   private let programGuideService: ProgramGuideService
-  private let config: ProductConfig
   let channelID: String
 
   private var cacheKey: String { "cachedPrograms_\(channelID)" }
 
-  public init(programGuideService: ProgramGuideService, config: ProductConfig, channelID: String, channelName: String) {
+  public init(programGuideService: ProgramGuideService, channelID: String, channelName: String) {
     self.programGuideService = programGuideService
-    self.config = config
     self.channelID = channelID
     self.channelName = channelName
     loadCachedPrograms()
@@ -64,9 +62,9 @@ public final class ProgramListViewModel {
   #if DEBUG
   /// Preview-only factory that creates a ViewModel with pre-loaded entries (no service needed).
   static func __preview_create(channelName: String, entries: [ProgramDTO]) -> ProgramListViewModel {
+    let dummyConfig = try! JSONDecoder().decode(ProductConfig.self, from: Data(#"{"vms_host":"x","vms_uid":"x","vms_live_cid":"x","vms_referer":"x"}"#.utf8))
     let vm = ProgramListViewModel(
-      programGuideService: ProgramGuideService(apiClient: _NoOpAPIClient()),
-      config: try! JSONDecoder().decode(ProductConfig.self, from: Data(#"{"vms_host":"x","vms_uid":"x","vms_live_cid":"x","vms_referer":"x"}"#.utf8)),
+      programGuideService: ProgramGuideService(apiClient: _NoOpAPIClient(), config: dummyConfig),
       channelID: "preview_\(UUID().uuidString)",
       channelName: channelName
     )
@@ -93,7 +91,7 @@ public final class ProgramListViewModel {
     if showSpinner { isLoading = true }
     errorMessage = nil
     do {
-      let fresh = try await programGuideService.fetchPrograms(config: config, channelID: channelID)
+      let fresh = try await programGuideService.fetchPrograms(channelID: channelID)
       entries = fresh
       await cachePrograms(fresh)
     } catch {

@@ -4,14 +4,15 @@ import SwiftData
 /// Fetches and parses program guide data per channel
 public actor ProgramGuideService {
   private let apiClient: any APIClientProtocol
+  private let config: ProductConfig
 
-  public init(apiClient: any APIClientProtocol) {
+  public init(apiClient: any APIClientProtocol, config: ProductConfig) {
     self.apiClient = apiClient
+    self.config = config
   }
 
   /// Fetch program entries for a specific channel
   public func fetchPrograms(
-    config: ProductConfig,
     channelID: String
   ) async throws -> [ProgramDTO] {
     let url = YoiTVEndpoints.epgURL(config: config, channelID: channelID)
@@ -28,11 +29,10 @@ public actor ProgramGuideService {
   /// Fetch programs and sync to SwiftData
   @MainActor
   public func syncPrograms(
-    config: ProductConfig,
     channelID: String,
     modelContext: ModelContext
   ) async throws -> [Program] {
-    let dtos = try await fetchPrograms(config: config, channelID: channelID)
+    let dtos = try await fetchPrograms(channelID: channelID)
 
     // Delete existing program entries for this channel
     let descriptor = FetchDescriptor<Program>(

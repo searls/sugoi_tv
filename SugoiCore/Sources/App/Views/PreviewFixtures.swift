@@ -78,8 +78,8 @@ struct FixtureContainerPreview: View {
       keychain: keychain,
       apiClient: APIClient(),
       authService: AuthService(keychain: keychain, apiClient: fixture),
-      channelService: ChannelService(apiClient: fixture),
-      programGuideService: ProgramGuideService(apiClient: fixture)
+      channelService: ChannelService(apiClient: fixture, config: fixtureProductConfig),
+      programGuideService: ProgramGuideService(apiClient: fixture, config: fixtureProductConfig)
     ))
   }
 

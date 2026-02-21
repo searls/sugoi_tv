@@ -8,13 +8,11 @@ public final class ChannelListViewModel {
   var errorMessage: String?
   var searchText: String = ""
 
-  private let channelService: ChannelService
-  let config: ProductConfig
+  let channelService: ChannelService
   private let cacheKey = "cachedChannels"
 
-  public init(channelService: ChannelService, config: ProductConfig) {
+  public init(channelService: ChannelService) {
     self.channelService = channelService
-    self.config = config
   }
 
   /// Populate channelGroups from disk cache (synchronous, no network).
@@ -45,7 +43,7 @@ public final class ChannelListViewModel {
     isLoading = true
     errorMessage = nil
     do {
-      let channels = try await channelService.fetchChannels(config: config)
+      let channels = try await channelService.fetchChannels()
       channelGroups = ChannelService.groupByCategory(channels)
       await cacheChannels(channels)
     } catch {
@@ -89,10 +87,7 @@ public struct ChannelListView: View {
           ForEach(group.channels, id: \.id) { channel in
             ChannelRow(
               channel: channel,
-              thumbnailURL: StreamURLBuilder.thumbnailURL(
-                channelListHost: viewModel.config.channelListHost,
-                playpath: channel.playpath
-              )
+              thumbnailURL: viewModel.channelService.thumbnailURL(for: channel)
             )
               .contentShape(Rectangle())
               .onTapGesture { onSelectChannel(channel) }
@@ -188,10 +183,7 @@ private let previewChannel = try! JSONDecoder().decode(ChannelDTO.self, from: pr
 #Preview("ChannelRow — with thumbnail") {
   ChannelRow(
     channel: previewChannel,
-    thumbnailURL: StreamURLBuilder.thumbnailURL(
-      channelListHost: "http://live.yoitv.com:9083",
-      playpath: previewChannel.playpath
-    )
+    thumbnailURL: URL(string: "http://live.yoitv.com:9083\(previewChannel.playpath).jpg?type=live&thumbnail=thumbnail_small.jpg")
   )
   .padding()
 }

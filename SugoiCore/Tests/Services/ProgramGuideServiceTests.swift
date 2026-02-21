@@ -16,6 +16,15 @@ struct ProgramGuideServiceTests {
     }
     """
 
+  static var testConfig: ProductConfig {
+    ProductConfig(
+      vmsHost: "http://live.yoitv.com:9083",
+      vmsVodHost: nil, vmsUid: "UID", vmsLiveCid: "CID",
+      vmsReferer: "http://play.yoitv.com", epgDays: 30, single: nil,
+      vmsChannelListHost: nil, vmsLiveHost: nil, vmsRecordHost: nil, vmsLiveUid: nil
+    )
+  }
+
   @Test("Fetches and parses program entries")
   func fetchPrograms() async throws {
     let mock = MockHTTPSession()
@@ -26,15 +35,8 @@ struct ProgramGuideServiceTests {
       return (response, Data(Self.programJSON.utf8))
     }
 
-    let config = ProductConfig(
-      vmsHost: "http://live.yoitv.com:9083",
-      vmsVodHost: nil, vmsUid: "UID", vmsLiveCid: "CID",
-      vmsReferer: "http://play.yoitv.com", epgDays: 30, single: nil,
-      vmsChannelListHost: nil, vmsLiveHost: nil, vmsRecordHost: nil, vmsLiveUid: nil
-    )
-
-    let service = ProgramGuideService(apiClient: APIClient(session: mock.session))
-    let entries = try await service.fetchPrograms(config: config, channelID: "CH1")
+    let service = ProgramGuideService(apiClient: APIClient(session: mock.session), config: Self.testConfig)
+    let entries = try await service.fetchPrograms(channelID: "CH1")
 
     #expect(entries.count == 3)
     #expect(entries[0].title == "Past Show")

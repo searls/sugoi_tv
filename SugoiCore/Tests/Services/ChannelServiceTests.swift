@@ -17,6 +17,15 @@ struct ChannelServiceTests {
     }
     """
 
+  static var testConfig: ProductConfig {
+    ProductConfig(
+      vmsHost: "http://live.yoitv.com:9083",
+      vmsVodHost: nil, vmsUid: "UID", vmsLiveCid: "CID",
+      vmsReferer: "http://play.yoitv.com", epgDays: nil, single: nil,
+      vmsChannelListHost: nil, vmsLiveHost: nil, vmsRecordHost: nil, vmsLiveUid: nil
+    )
+  }
+
   @Test("Fetches and parses channel list")
   func fetchChannels() async throws {
     let mock = MockHTTPSession()
@@ -27,15 +36,8 @@ struct ChannelServiceTests {
       return (response, Data(Self.channelsJSON.utf8))
     }
 
-    let config = ProductConfig(
-      vmsHost: "http://live.yoitv.com:9083",
-      vmsVodHost: nil, vmsUid: "UID", vmsLiveCid: "CID",
-      vmsReferer: "http://play.yoitv.com", epgDays: nil, single: nil,
-      vmsChannelListHost: nil, vmsLiveHost: nil, vmsRecordHost: nil, vmsLiveUid: nil
-    )
-
-    let service = ChannelService(apiClient: APIClient(session: mock.session))
-    let channels = try await service.fetchChannels(config: config)
+    let service = ChannelService(apiClient: APIClient(session: mock.session), config: Self.testConfig)
+    let channels = try await service.fetchChannels()
 
     #expect(channels.count == 4)
     #expect(channels[0].name == "NHK")

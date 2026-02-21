@@ -8,10 +8,12 @@ public final class AppState {
   public let keychain: KeychainService
   public let apiClient: APIClient
   public let authService: AuthService
-  public let channelService: ChannelService
-  public let programGuideService: ProgramGuideService
+  public private(set) var channelService: ChannelService
+  public private(set) var programGuideService: ProgramGuideService
 
-  public var session: AuthService.Session?
+  public var session: AuthService.Session? {
+    didSet { rebuildServicesIfNeeded() }
+  }
   public var isRestoringSession: Bool = true
 
   public init() {
@@ -21,8 +23,10 @@ public final class AppState {
     self.keychain = keychain
     self.apiClient = apiClient
     self.authService = AuthService(keychain: keychain, apiClient: apiClient)
-    self.channelService = ChannelService(apiClient: apiClient)
-    self.programGuideService = ProgramGuideService(apiClient: apiClient)
+    // Placeholder config — rebuilt once session is available
+    let placeholder = ProductConfig.placeholder
+    self.channelService = ChannelService(apiClient: apiClient, config: placeholder)
+    self.programGuideService = ProgramGuideService(apiClient: apiClient, config: placeholder)
   }
 
   /// Testable initializer that accepts pre-built services
@@ -38,6 +42,12 @@ public final class AppState {
     self.authService = authService
     self.channelService = channelService
     self.programGuideService = programGuideService
+  }
+
+  private func rebuildServicesIfNeeded() {
+    guard let config = session?.productConfig else { return }
+    channelService = ChannelService(apiClient: apiClient, config: config)
+    programGuideService = ProgramGuideService(apiClient: apiClient, config: config)
   }
 
   /// Attempt to restore a previous session from the Keychain.

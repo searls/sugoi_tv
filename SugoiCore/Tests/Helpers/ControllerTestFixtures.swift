@@ -58,13 +58,14 @@ enum ControllerTestFixtures {
       return (response, Data(channelsJSON.utf8))
     }
     let client = APIClient(session: mock.session)
-    let auth = AuthService(keychain: MockKeychainService(), apiClient: client)
-    let channels = ChannelService(apiClient: client)
-    let programGuide = ProgramGuideService(apiClient: client)
-    let appState = AppState(apiClient: client, authService: auth, channelService: channels, programGuideService: programGuide)
-
     let loginResponse = try JSONDecoder().decode(LoginResponse.self, from: Data(testLoginJSON.utf8))
     let config = try loginResponse.parseProductConfig()
+
+    let auth = AuthService(keychain: MockKeychainService(), apiClient: client)
+    let channels = ChannelService(apiClient: client, config: config)
+    let programGuide = ProgramGuideService(apiClient: client, config: config)
+    let appState = AppState(apiClient: client, authService: auth, channelService: channels, programGuideService: programGuide)
+
     let session = AuthService.Session(from: loginResponse, config: config)
 
     return ChannelPlaybackController(appState: appState, session: session)

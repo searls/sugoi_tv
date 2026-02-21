@@ -62,6 +62,13 @@ public struct ProductConfig: Codable, Sendable, Equatable {
     case vmsLiveUid = "vms_live_uid"
   }
 
+  /// Dummy config used as a placeholder before authentication provides a real one.
+  static let placeholder = ProductConfig(
+    vmsHost: "", vmsVodHost: nil, vmsUid: "", vmsLiveCid: "",
+    vmsReferer: "", epgDays: nil, single: nil,
+    vmsChannelListHost: nil, vmsLiveHost: nil, vmsRecordHost: nil, vmsLiveUid: nil
+  )
+
   // MARK: - Derived host resolution (fallback chain per API spec)
 
   public var channelListHost: String { vmsChannelListHost ?? vmsHost }

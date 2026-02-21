@@ -35,9 +35,9 @@ struct ProgramListViewModelTests {
       return (response, Data(programJSON.utf8))
     }
 
-    let service = ProgramGuideService(apiClient: APIClient(session: mock.session))
+    let service = ProgramGuideService(apiClient: APIClient(session: mock.session), config: Self.testConfig)
     let vm = ProgramListViewModel(
-      programGuideService: service, config: Self.testConfig,
+      programGuideService: service,
       channelID: "load_\(UUID())", channelName: "NHK"
     )
 
@@ -63,9 +63,9 @@ struct ProgramListViewModelTests {
       return (response, Data(json.utf8))
     }
 
-    let service = ProgramGuideService(apiClient: APIClient(session: mock.session))
+    let service = ProgramGuideService(apiClient: APIClient(session: mock.session), config: Self.testConfig)
     let vm = ProgramListViewModel(
-      programGuideService: service, config: Self.testConfig,
+      programGuideService: service,
       channelID: "refresh_\(UUID())", channelName: "NHK"
     )
 
@@ -100,9 +100,9 @@ struct ProgramListViewModelTests {
       return (response, Data(json.utf8))
     }
 
-    let service = ProgramGuideService(apiClient: APIClient(session: mock.session))
+    let service = ProgramGuideService(apiClient: APIClient(session: mock.session), config: Self.testConfig)
     let vm = ProgramListViewModel(
-      programGuideService: service, config: Self.testConfig,
+      programGuideService: service,
       channelID: "live_\(UUID())", channelName: "NHK"
     )
 
@@ -120,9 +120,9 @@ struct ProgramListViewModelTests {
       throw URLError(.notConnectedToInternet)
     }
 
-    let service = ProgramGuideService(apiClient: APIClient(session: mock.session))
+    let service = ProgramGuideService(apiClient: APIClient(session: mock.session), config: Self.testConfig)
     let vm = ProgramListViewModel(
-      programGuideService: service, config: Self.testConfig,
+      programGuideService: service,
       channelID: "fail_\(UUID())", channelName: "NHK"
     )
 
@@ -148,9 +148,9 @@ struct ProgramListViewModelDerivedStateTests {
   func entriesUpdateLiveProgram() {
     let now = Int(Date().timeIntervalSince1970)
     let mock = MockHTTPSession()
-    let service = ProgramGuideService(apiClient: APIClient(session: mock.session))
+    let service = ProgramGuideService(apiClient: APIClient(session: mock.session), config: Self.testConfig)
     let vm = ProgramListViewModel(
-      programGuideService: service, config: Self.testConfig,
+      programGuideService: service,
       channelID: "derived_\(UUID())", channelName: "NHK"
     )
 
@@ -169,9 +169,9 @@ struct ProgramListViewModelDerivedStateTests {
   func entriesUpdateUpcoming() {
     let now = Int(Date().timeIntervalSince1970)
     let mock = MockHTTPSession()
-    let service = ProgramGuideService(apiClient: APIClient(session: mock.session))
+    let service = ProgramGuideService(apiClient: APIClient(session: mock.session), config: Self.testConfig)
     let vm = ProgramListViewModel(
-      programGuideService: service, config: Self.testConfig,
+      programGuideService: service,
       channelID: "derived_\(UUID())", channelName: "NHK"
     )
 
@@ -191,9 +191,9 @@ struct ProgramListViewModelDerivedStateTests {
   func entriesUpdatePastByDate() {
     let now = Int(Date().timeIntervalSince1970)
     let mock = MockHTTPSession()
-    let service = ProgramGuideService(apiClient: APIClient(session: mock.session))
+    let service = ProgramGuideService(apiClient: APIClient(session: mock.session), config: Self.testConfig)
     let vm = ProgramListViewModel(
-      programGuideService: service, config: Self.testConfig,
+      programGuideService: service,
       channelID: "derived_\(UUID())", channelName: "NHK"
     )
 
@@ -215,9 +215,9 @@ struct ProgramListViewModelDerivedStateTests {
   func clearingEntriesClearsDerived() {
     let now = Int(Date().timeIntervalSince1970)
     let mock = MockHTTPSession()
-    let service = ProgramGuideService(apiClient: APIClient(session: mock.session))
+    let service = ProgramGuideService(apiClient: APIClient(session: mock.session), config: Self.testConfig)
     let vm = ProgramListViewModel(
-      programGuideService: service, config: Self.testConfig,
+      programGuideService: service,
       channelID: "derived_\(UUID())", channelName: "NHK"
     )
 
@@ -379,10 +379,9 @@ struct ProgramListViewModelSectioningTests {
   @MainActor
   func pastPagination() {
     let mock = MockHTTPSession()
-    let service = ProgramGuideService(apiClient: APIClient(session: mock.session))
+    let service = ProgramGuideService(apiClient: APIClient(session: mock.session), config: ProgramListViewModelTests.testConfig)
     let vm = ProgramListViewModel(
       programGuideService: service,
-      config: ProgramListViewModelTests.testConfig,
       channelID: "page_\(UUID())",
       channelName: "NHK"
     )

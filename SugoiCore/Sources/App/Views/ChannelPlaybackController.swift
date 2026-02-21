@@ -53,8 +53,7 @@ final class ChannelPlaybackController {
     self.session = session
     self.programGuideService = appState.programGuideService
     self.channelListVM = ChannelListViewModel(
-      channelService: appState.channelService,
-      config: session.productConfig
+      channelService: appState.channelService
     )
     self.refererProxy = RefererProxy(referer: session.productConfig.vmsReferer)
     refererProxy.start()
@@ -117,15 +116,8 @@ final class ChannelPlaybackController {
     loadingTitle = channel.name
     persistence.recordLivePlay(channelId: channel.id)
 
-    // When the proxy is ready, route through it so AirPlay receivers can
-    // reach the VMS server. Fall back to direct URL + AVURLAsset header
-    // injection (works locally but not over AirPlay).
-    if let proxiedURL = refererProxy.proxiedURL(for: url) {
-      playerManager.loadLiveStream(url: proxiedURL, referer: "")
-    } else {
-      let referer = session.productConfig.vmsReferer
-      playerManager.loadLiveStream(url: url, referer: referer)
-    }
+    let (streamURL, referer) = resolveStreamURL(url)
+    playerManager.loadLiveStream(url: streamURL, referer: referer)
     playerManager.setNowPlayingInfo(title: channel.name, isLiveStream: true)
   }
 
@@ -141,7 +133,6 @@ final class ChannelPlaybackController {
     }
     let vm = ProgramListViewModel(
       programGuideService: programGuideService,
-      config: session.productConfig,
       channelID: channel.id,
       channelName: channel.displayName
     )
@@ -163,13 +154,20 @@ final class ChannelPlaybackController {
     loadingTitle = program.title
     persistence.recordVODPlay(programPath: program.path, title: program.title, channelName: channelName)
 
-    if let proxiedURL = refererProxy.proxiedURL(for: url) {
-      playerManager.loadVODStream(url: proxiedURL, referer: "", resumeFrom: resumeFrom)
-    } else {
-      let referer = session.productConfig.vmsReferer
-      playerManager.loadVODStream(url: url, referer: referer, resumeFrom: resumeFrom)
-    }
+    let (streamURL, referer) = resolveStreamURL(url)
+    playerManager.loadVODStream(url: streamURL, referer: referer, resumeFrom: resumeFrom)
     playerManager.setNowPlayingInfo(title: "\(channelName) - \(program.title)", isLiveStream: false)
+  }
+
+  // MARK: - Stream URL resolution
+
+  /// Route through the local referer proxy when available (enables AirPlay),
+  /// otherwise return the direct URL with the referer header for AVURLAsset injection.
+  private func resolveStreamURL(_ url: URL) -> (url: URL, referer: String) {
+    if let proxiedURL = refererProxy.proxiedURL(for: url) {
+      return (proxiedURL, "")
+    }
+    return (url, session.productConfig.vmsReferer)
   }
 
   // MARK: - Navigation

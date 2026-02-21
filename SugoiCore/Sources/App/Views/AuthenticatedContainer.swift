@@ -38,10 +38,7 @@ struct AuthenticatedContainer: View {
           playerManager: controller.playerManager,
           loadingTitle: controller.loadingTitle,
           loadingThumbnailURL: controller.selectedChannel.flatMap {
-            StreamURLBuilder.thumbnailURL(
-              channelListHost: controller.channelListVM.config.channelListHost,
-              playpath: $0.playpath
-            )
+            controller.channelListVM.channelService.thumbnailURL(for: $0)
           }
         )
         #if os(macOS)
@@ -252,7 +249,7 @@ struct AuthenticatedContainer: View {
       ScrollViewReader { proxy in
         ChannelGridView(
           channelGroups: controller.channelListVM.filteredGroups,
-          channelListHost: controller.channelListVM.config.channelListHost,
+          channelService: controller.channelListVM.channelService,
           onSelectChannel: { channel in
             channelSelection = channel.id
             withAnimation { controller.drillIntoChannel(channel, autoPlay: false) }
@@ -322,10 +319,7 @@ struct AuthenticatedContainer: View {
   private func channelItem(_ channel: ChannelDTO) -> some View {
     ChannelRow(
       channel: channel,
-      thumbnailURL: StreamURLBuilder.thumbnailURL(
-        channelListHost: controller.channelListVM.config.channelListHost,
-        playpath: channel.playpath
-      )
+      thumbnailURL: controller.channelListVM.channelService.thumbnailURL(for: channel)
     )
     .tag(channel.id)
     .id(channel.id)
