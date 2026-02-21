@@ -1,7 +1,11 @@
 {
   "runs": {
     "fast-tests": {
-      "at": 1771685209549,
+      "at": 1771685310015,
+      "result": "pass"
+    },
+    "full-tests": {
+      "at": 1771685306302,
       "result": "pass"
     }
   }
