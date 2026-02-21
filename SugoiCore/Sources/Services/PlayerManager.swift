@@ -52,7 +52,9 @@ public final class PlayerManager {
   }
 
   private func makeAsset(url: URL, referer: String) -> AVURLAsset {
-    let options = StreamURLBuilder.assetOptions(referer: referer)
+    let options: [String: Any] = referer.isEmpty
+      ? [:]
+      : ["AVURLAssetHTTPHeaderFieldsKey": ["Referer": referer]]
     return AVURLAsset(url: url, options: options)
   }
 

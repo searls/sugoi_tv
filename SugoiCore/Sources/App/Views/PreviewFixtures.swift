@@ -2,12 +2,28 @@
 import Foundation
 import SwiftUI
 
+// MARK: - Preview-only response types
+
+/// Lightweight decodable wrapper for channels.json fixture.
+private struct _ChannelListResponse: Decodable { let result: [ChannelDTO] }
+
+/// Lightweight decodable wrapper for EPG fixtures.
+private struct _ChannelProgramsResponse: Decodable { let result: [_ChannelProgramsDTO] }
+private struct _ChannelProgramsDTO: Decodable {
+  let id: String
+  let name: String
+  let programHistory: String?
+  enum CodingKeys: String, CodingKey { case id, name, programHistory = "record_epg" }
+  func parsePrograms() throws -> [ProgramDTO] {
+    guard let json = programHistory, !json.isEmpty,
+          let data = json.data(using: .utf8) else { return [] }
+    return try JSONDecoder().decode([ProgramDTO].self, from: data)
+  }
+}
+
 // MARK: - Fixture API Client
 
 /// API client that serves captured fixture data for SwiftUI previews.
-/// Routes requests based on URL query parameters:
-/// - `no_epg=1` (no `vid=`) → channels.json (ChannelListResponse)
-/// - `no_epg=0` with `vid=X` → EPG fixture (ChannelProgramsResponse)
 actor FixtureAPIClient: APIClientProtocol {
   private static let epgFixtures: [String: String] = [
     "AA6EC2B2BC19EFE5FA44BE23187CDA63": "epg-nhk-g",
@@ -56,26 +72,15 @@ actor FixtureAPIClient: APIClientProtocol {
 
 // MARK: - Fixture TVProvider for previews
 
-/// Uses fixture API client and real VMS host for thumbnails.
+/// Uses fixture API client for channels/programs; no auth, no streaming.
 private final class FixtureTVProvider: TVProvider, @unchecked Sendable {
-  let displayName = "YoiTV"
+  let displayName = "Preview"
   let providerID = "fixture"
-  let requiresAuthentication = true
+  let requiresAuthentication = false
   let displayTimezone = TimeZone(identifier: "Asia/Tokyo")!
 
-  private let fixtureClient: any APIClientProtocol
-  private let config: ProductConfig
-
-  init() {
-    self.fixtureClient = FixtureAPIClient()
-    self.config = Self.fixtureConfig
-  }
-
-  private static let fixtureConfig: ProductConfig = {
-    try! JSONDecoder().decode(ProductConfig.self, from: Data("""
-    {"vms_host":"http://live.yoitv.com:9083","vms_uid":"uid","vms_live_cid":"cid","vms_referer":"http://play.yoitv.com"}
-    """.utf8))
-  }()
+  private let fixtureClient = FixtureAPIClient()
+  private let channelListHost = "http://live.yoitv.com:9083"
 
   var isAuthenticated: Bool { true }
   var loginFields: [LoginField] { [] }
@@ -85,21 +90,26 @@ private final class FixtureTVProvider: TVProvider, @unchecked Sendable {
   func reauthenticate() async throws -> Bool { true }
 
   func fetchChannels() async throws -> [ChannelDTO] {
-    let service = ChannelService(apiClient: fixtureClient, config: config)
-    return try await service.fetchChannels()
+    let response: _ChannelListResponse = try await fixtureClient.get(
+      url: URL(string: "\(channelListHost)/api?action=listLives&no_epg=1")!
+    )
+    return response.result
   }
 
   func groupByCategory(_ channels: [ChannelDTO]) -> [(category: String, channels: [ChannelDTO])] {
-    ChannelService.groupByCategory(channels)
+    channels.groupedByCategory()
   }
 
   func thumbnailURL(for channel: ChannelDTO) -> URL? {
-    StreamURLBuilder.thumbnailURL(channelListHost: config.channelListHost, playpath: channel.playpath)
+    URL(string: "\(channelListHost)\(channel.playpath).jpg?type=live&thumbnail=thumbnail_small.jpg")
   }
 
   func fetchPrograms(channelID: String) async throws -> [ProgramDTO] {
-    let service = ProgramGuideService(apiClient: fixtureClient, config: config)
-    return try await service.fetchPrograms(channelID: channelID)
+    let response: _ChannelProgramsResponse = try await fixtureClient.get(
+      url: URL(string: "\(channelListHost)/api?action=listLives&vid=\(channelID)&no_epg=0")!
+    )
+    guard let channelData = response.result.first else { return [] }
+    return try channelData.parsePrograms()
   }
 
   func liveStreamRequest(for channel: ChannelDTO) -> StreamRequest? { nil }

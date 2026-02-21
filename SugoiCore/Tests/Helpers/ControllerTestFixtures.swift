@@ -2,18 +2,21 @@ import Foundation
 
 @testable import SugoiCore
 
+/// Lightweight wrapper for decoding test JSON — avoids depending on YoiTVProvider.
+private struct _ChannelListWrapper: Decodable { let result: [ChannelDTO] }
+
 /// Shared test fixtures for ChannelPlaybackController test suites.
 /// Eliminates duplication of makeController() and JSON fixtures across 7 suites.
 enum ControllerTestFixtures {
   static let testChannels: [ChannelDTO] = {
     let json = Data(channelsJSON.utf8)
-    let response = try! JSONDecoder().decode(ChannelListResponse.self, from: json)
+    let response = try! JSONDecoder().decode(_ChannelListWrapper.self, from: json)
     return response.result
   }()
 
   static let allStoppedChannels: [ChannelDTO] = {
     let json = Data(allStoppedJSON.utf8)
-    let response = try! JSONDecoder().decode(ChannelListResponse.self, from: json)
+    let response = try! JSONDecoder().decode(_ChannelListWrapper.self, from: json)
     return response.result
   }()
 
@@ -69,7 +72,7 @@ enum ControllerTestFixtures {
   @MainActor
   static func makeController(channelsJSON: String) throws -> ChannelPlaybackController {
     let json = Data(channelsJSON.utf8)
-    let response = try JSONDecoder().decode(ChannelListResponse.self, from: json)
+    let response = try JSONDecoder().decode(_ChannelListWrapper.self, from: json)
     return try makeController(channels: response.result)
   }
 }

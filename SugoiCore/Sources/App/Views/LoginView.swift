@@ -32,17 +32,8 @@ public final class LoginViewModel {
 
     do {
       try await loginAction(customerID, password)
-    } catch let error as AuthError {
-      switch error {
-      case .loginFailed:
-        errorMessage = "Invalid customer ID or password."
-      case .accountInvalid:
-        errorMessage = "Account is expired, disabled, or unconfirmed."
-      default:
-        errorMessage = "Login failed. Please try again."
-      }
     } catch {
-      errorMessage = "Network error. Please check your connection."
+      errorMessage = "Login failed. Please check your credentials and try again."
     }
 
     isLoading = false

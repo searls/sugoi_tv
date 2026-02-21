@@ -109,6 +109,8 @@ struct ChannelGridView: View {
 
 // MARK: - Previews
 
+private struct _ChannelListWrapper: Decodable { let result: [ChannelDTO] }
+
 #Preview("ChannelGridView") {
   let data = try! Data(
     contentsOf: Bundle.module.url(
@@ -116,8 +118,8 @@ struct ChannelGridView: View {
       subdirectory: "PreviewContent/fixtures"
     )!
   )
-  let response = try! JSONDecoder().decode(ChannelListResponse.self, from: data)
-  let groups = ChannelService.groupByCategory(response.result)
+  let response = try! JSONDecoder().decode(_ChannelListWrapper.self, from: data)
+  let groups = response.result.groupedByCategory()
 
   NavigationStack {
     ChannelGridView(

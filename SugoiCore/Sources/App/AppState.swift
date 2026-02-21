@@ -125,12 +125,7 @@ public final class AppState {
 
   /// Sync provider-specific state into observable properties.
   private func syncProviderState() {
-    if let yoitv = activeProvider as? YoiTVProviderAdapter {
-      accountID = yoitv.cid
-      vmsReferer = yoitv.vmsReferer
-    } else {
-      accountID = nil
-      vmsReferer = nil
-    }
+    accountID = activeProvider.accountID
+    vmsReferer = activeProvider.vmsReferer
   }
 }

@@ -80,7 +80,7 @@ final class MockTVProvider: TVProvider, @unchecked Sendable {
   }
 
   func groupByCategory(_ channels: [ChannelDTO]) -> [(category: String, channels: [ChannelDTO])] {
-    ChannelService.groupByCategory(channels)
+    channels.groupedByCategory()
   }
 
   func thumbnailURL(for channel: ChannelDTO) -> URL? { _thumbnailURL?(channel) }

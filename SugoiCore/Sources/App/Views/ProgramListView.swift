@@ -53,8 +53,8 @@ public final class ProgramListViewModel {
   }
 
   private func recomputeDerivedState() {
-    liveProgram = ProgramGuideService.liveProgram(in: entries)
-    upcomingPrograms = ProgramGuideService.upcomingPrograms(in: entries, limit: 5)
+    liveProgram = entries.liveProgram()
+    upcomingPrograms = entries.upcomingPrograms(limit: 5)
     pastByDate = Self.groupPastByDate(entries: entries, current: liveProgram)
     pastDisplayLimit = Self.initialLimit(for: pastByDate)
   }

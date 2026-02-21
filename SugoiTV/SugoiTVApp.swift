@@ -1,5 +1,6 @@
 import SugoiCore
 import SwiftUI
+import YoiTVProvider
 
 @main
 struct SugoiTVApp: App {

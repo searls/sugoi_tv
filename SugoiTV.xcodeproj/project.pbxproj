@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		D007A77E2F3BDA9700F2C5EC /* SugoiCore in Frameworks */ = {isa = PBXBuildFile; productRef = D007A77D2F3BDA9700F2C5EC /* SugoiCore */; };
+		D007A78E2F3BDA9700F2C5EC /* YoiTVProvider in Frameworks */ = {isa = PBXBuildFile; productRef = D007A78D2F3BDA9700F2C5EC /* YoiTVProvider */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -70,6 +71,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				D007A77E2F3BDA9700F2C5EC /* SugoiCore in Frameworks */,
+				D007A78E2F3BDA9700F2C5EC /* YoiTVProvider in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -139,6 +141,7 @@
 			name = SugoiTV;
 			packageProductDependencies = (
 				D007A77D2F3BDA9700F2C5EC /* SugoiCore */,
+				D007A78D2F3BDA9700F2C5EC /* YoiTVProvider */,
 			);
 			productName = SugoiTV;
 			productReference = D0C17A412F3BD198005A596E /* SugoiTV.app */;
@@ -655,6 +658,10 @@
 		D007A77D2F3BDA9700F2C5EC /* SugoiCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = SugoiCore;
+		};
+		D007A78D2F3BDA9700F2C5EC /* YoiTVProvider */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = YoiTVProvider;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

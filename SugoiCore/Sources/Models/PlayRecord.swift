@@ -15,15 +15,17 @@ public final class PlayRecord {
 
   public init() {}
 
-  public init(from dto: PlayRecordDTO) {
-    self.vid = dto.vid
-    self.name = dto.name
-    self.durationMs = dto.duration
-    self.positionMs = dto.pos
-    self.channelID = dto.channelId ?? ""
-    self.channelName = dto.channelName ?? ""
-    let timestamp = dto.playAt ?? dto.platAt ?? 0
-    self.playedAt = Date(timeIntervalSince1970: TimeInterval(timestamp))
+  public init(
+    vid: String, name: String, durationMs: Int, positionMs: Int,
+    channelID: String, channelName: String, playedAt: Date
+  ) {
+    self.vid = vid
+    self.name = name
+    self.durationMs = durationMs
+    self.positionMs = positionMs
+    self.channelID = channelID
+    self.channelName = channelName
+    self.playedAt = playedAt
   }
 
   /// Playback progress as 0.0...1.0

@@ -70,6 +70,14 @@ public protocol TVProvider: AnyObject, Sendable {
   /// Build a stream request for VOD playback, or nil if unavailable.
   func vodStreamRequest(for program: ProgramDTO) -> StreamRequest?
 
+  // MARK: - Provider-specific metadata (optional)
+
+  /// Account identifier for display in settings (e.g. YoiTV CID).
+  var accountID: String? { get }
+
+  /// Referer URL for proxy initialization, if the provider requires one.
+  var vmsReferer: String? { get }
+
   // MARK: - Playback enforcement (optional)
 
   /// Start single-play enforcement polling (YoiTV-specific).
@@ -82,6 +90,8 @@ public protocol TVProvider: AnyObject, Sendable {
 // MARK: - Default implementations for optional methods
 
 public extension TVProvider {
+  var accountID: String? { nil }
+  var vmsReferer: String? { nil }
   func startPlaybackEnforcement() async {}
   func stopPlaybackEnforcement() async {}
   func startAutoRefresh() async {}

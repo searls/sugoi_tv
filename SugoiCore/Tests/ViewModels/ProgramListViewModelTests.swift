@@ -224,7 +224,7 @@ struct ProgramListViewModelSectioningTests {
       ProgramDTO(time: Self.jstTimestamp(month: 2, day: 14, hour: 18), title: "Future", path: ""),
     ]
 
-    let current = ProgramGuideService.liveProgram(in: entries, at: now)
+    let current = entries.liveProgram(at: now)
     let sections = ProgramListViewModel.groupPastByDate(entries: entries, current: current, now: now)
 
     // 3 days of past content (today, yesterday, Wed Feb 12)
@@ -257,7 +257,7 @@ struct ProgramListViewModelSectioningTests {
       ProgramDTO(time: Self.jstTimestamp(month: 2, day: 14, hour: 14), title: "Current", path: ""),
       ProgramDTO(time: Self.jstTimestamp(month: 2, day: 14, hour: 18), title: "Future", path: ""),
     ]
-    let current = ProgramGuideService.liveProgram(in: entries, at: now)
+    let current = entries.liveProgram(at: now)
     let sections = ProgramListViewModel.groupPastByDate(entries: entries, current: current, now: now)
 
     #expect(sections.isEmpty)
@@ -269,7 +269,7 @@ struct ProgramListViewModelSectioningTests {
     let entries = [
       ProgramDTO(time: Self.jstTimestamp(month: 2, day: 14, hour: 14), title: "Current", path: ""),
     ]
-    let current = ProgramGuideService.liveProgram(in: entries, at: now)
+    let current = entries.liveProgram(at: now)
     let sections = ProgramListViewModel.groupPastByDate(entries: entries, current: current, now: now)
 
     #expect(sections.isEmpty)

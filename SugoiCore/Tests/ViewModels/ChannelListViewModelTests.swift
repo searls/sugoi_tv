@@ -16,7 +16,8 @@ struct ChannelListViewModelTests {
       "code": "OK"
     }
     """.utf8)
-    return try! JSONDecoder().decode(ChannelListResponse.self, from: json).result
+    struct _R: Decodable { let result: [ChannelDTO] }
+    return try! JSONDecoder().decode(_R.self, from: json).result
   }()
 
   @MainActor

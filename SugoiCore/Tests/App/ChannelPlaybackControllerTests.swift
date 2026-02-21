@@ -7,15 +7,6 @@ import Testing
 @Suite("ChannelPlaybackController.loadAndAutoSelect")
 @MainActor
 struct ChannelPlaybackControllerAutoSelectTests {
-  nonisolated static var testConfig: ProductConfig {
-    ProductConfig(
-      vmsHost: "http://live.yoitv.com:9083",
-      vmsVodHost: nil, vmsUid: "UID", vmsLiveCid: "CID",
-      vmsReferer: "http://play.yoitv.com", epgDays: nil, single: nil,
-      vmsChannelListHost: nil, vmsLiveHost: nil, vmsRecordHost: nil, vmsLiveUid: nil
-    )
-  }
-
   @Test("Selects last-used channel when lastChannelId matches")
   func selectsLastChannel() async throws {
     let controller = try ControllerTestFixtures.makeController()
