@@ -143,4 +143,48 @@ struct AppStateSwitchProviderTests {
 
     #expect(appState.isAuthenticated == false)
   }
+
+  @Test("Switching provider persists provider ID to UserDefaults")
+  func switchPersistsID() async {
+    let provider1 = MockTVProvider(displayName: "P1", providerID: "p1")
+    let provider2 = MockTVProvider(displayName: "P2", providerID: "p2")
+    let appState = AppState(providers: [provider1, provider2])
+
+    await appState.switchProvider(to: provider2)
+
+    #expect(UserDefaults.standard.string(forKey: "activeProviderID") == "p2")
+  }
+
+  @Test("Switching provider stops playback enforcement on old provider")
+  func switchStopsEnforcement() async {
+    let provider1 = MockTVProvider(displayName: "P1", providerID: "p1", isAuthenticated: true)
+    let provider2 = MockTVProvider(displayName: "P2", providerID: "p2")
+    let appState = AppState(providers: [provider1, provider2])
+
+    await appState.switchProvider(to: provider2)
+
+    #expect(provider1.stopPlaybackEnforcementCallCount == 1)
+  }
+
+  @Test("Switching provider restores session on new provider")
+  func switchRestoresSession() async {
+    let provider1 = MockTVProvider(displayName: "P1", providerID: "p1")
+    let provider2 = MockTVProvider(displayName: "P2", providerID: "p2", isAuthenticated: true)
+    let appState = AppState(providers: [provider1, provider2])
+
+    await appState.switchProvider(to: provider2)
+
+    #expect(appState.isAuthenticated == true)
+    #expect(appState.activeProvider.providerID == "p2")
+  }
+
+  @Test("Init restores last-used provider from UserDefaults")
+  func initRestoresLastProvider() {
+    UserDefaults.standard.set("p2", forKey: "activeProviderID")
+    let provider1 = MockTVProvider(displayName: "P1", providerID: "p1")
+    let provider2 = MockTVProvider(displayName: "P2", providerID: "p2")
+    let appState = AppState(providers: [provider1, provider2])
+
+    #expect(appState.activeProvider.providerID == "p2")
+  }
 }

@@ -16,6 +16,7 @@ final class MockTVProvider: TVProvider, @unchecked Sendable {
     var isAuthenticated: Bool = false
     var channels: [ChannelDTO] = []
     var programs: [String: [ProgramDTO]] = [:]
+    var stopPlaybackEnforcementCallCount: Int = 0
   }
 
   var isAuthenticated: Bool {
@@ -70,6 +71,14 @@ final class MockTVProvider: TVProvider, @unchecked Sendable {
 
   func reauthenticate() async throws -> Bool {
     state.withLock { $0.isAuthenticated }
+  }
+
+  func stopPlaybackEnforcement() async {
+    state.withLock { $0.stopPlaybackEnforcementCallCount += 1 }
+  }
+
+  var stopPlaybackEnforcementCallCount: Int {
+    state.withLock { $0.stopPlaybackEnforcementCallCount }
   }
 
   // MARK: - Channels
