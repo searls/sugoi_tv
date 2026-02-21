@@ -29,13 +29,13 @@ public final class ProgramListViewModel {
   nonisolated static let pageSize = 100
   nonisolated static let initialMaxDays = 7
 
-  private let programGuideService: ProgramGuideService
+  private let provider: any TVProvider
   let channelID: String
 
   private var cacheKey: String { "cachedPrograms_\(channelID)" }
 
-  public init(programGuideService: ProgramGuideService, channelID: String, channelName: String) {
-    self.programGuideService = programGuideService
+  public init(provider: any TVProvider, channelID: String, channelName: String) {
+    self.provider = provider
     self.channelID = channelID
     self.channelName = channelName
     loadCachedPrograms()
@@ -62,9 +62,8 @@ public final class ProgramListViewModel {
   #if DEBUG
   /// Preview-only factory that creates a ViewModel with pre-loaded entries (no service needed).
   static func __preview_create(channelName: String, entries: [ProgramDTO]) -> ProgramListViewModel {
-    let dummyConfig = try! JSONDecoder().decode(ProductConfig.self, from: Data(#"{"vms_host":"x","vms_uid":"x","vms_live_cid":"x","vms_referer":"x"}"#.utf8))
     let vm = ProgramListViewModel(
-      programGuideService: ProgramGuideService(apiClient: _NoOpAPIClient(), config: dummyConfig),
+      provider: _PreviewTVProvider(),
       channelID: "preview_\(UUID().uuidString)",
       channelName: channelName
     )
@@ -91,7 +90,7 @@ public final class ProgramListViewModel {
     if showSpinner { isLoading = true }
     errorMessage = nil
     do {
-      let fresh = try await programGuideService.fetchPrograms(channelID: channelID)
+      let fresh = try await provider.fetchPrograms(channelID: channelID)
       entries = fresh
       await cachePrograms(fresh)
     } catch {
@@ -486,15 +485,23 @@ struct ProgramRow: View {
 
 #if DEBUG
 
-private actor _NoOpAPIClient: APIClientProtocol {
-  func get<T: Decodable & Sendable>(url: URL, headers: [String: String]) async throws -> T {
-    fatalError("Preview stub")
-  }
-  func post<Body: Encodable & Sendable, Response: Decodable & Sendable>(
-    url: URL, headers: [String: String], body: Body
-  ) async throws -> Response {
-    fatalError("Preview stub")
-  }
+private final class _PreviewTVProvider: TVProvider, @unchecked Sendable {
+  let displayName = "Preview"
+  let providerID = "preview"
+  let requiresAuthentication = false
+  let displayTimezone = TimeZone(identifier: "Asia/Tokyo")!
+  var isAuthenticated: Bool { true }
+  var loginFields: [LoginField] { [] }
+  func login(credentials: [String: String]) async throws {}
+  func restoreSession() async throws -> Bool { true }
+  func logout() async {}
+  func reauthenticate() async throws -> Bool { true }
+  func fetchChannels() async throws -> [ChannelDTO] { [] }
+  func groupByCategory(_ channels: [ChannelDTO]) -> [(category: String, channels: [ChannelDTO])] { [] }
+  func thumbnailURL(for channel: ChannelDTO) -> URL? { nil }
+  func fetchPrograms(channelID: String) async throws -> [ProgramDTO] { [] }
+  func liveStreamRequest(for channel: ChannelDTO) -> StreamRequest? { nil }
+  func vodStreamRequest(for program: ProgramDTO) -> StreamRequest? { nil }
 }
 
 private func previewTimestamp(daysAgo: Int, hour: Int, minute: Int = 0) -> Int {

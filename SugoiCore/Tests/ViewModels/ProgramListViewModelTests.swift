@@ -5,40 +5,25 @@ import Testing
 
 @Suite("ProgramListViewModel")
 struct ProgramListViewModelTests {
-  static var testConfig: ProductConfig {
-    ProductConfig(
-      vmsHost: "http://live.yoitv.com:9083",
-      vmsVodHost: nil, vmsUid: "UID", vmsLiveCid: "CID",
-      vmsReferer: "http://play.yoitv.com", epgDays: 30, single: nil,
-      vmsChannelListHost: nil, vmsLiveHost: nil, vmsRecordHost: nil, vmsLiveUid: nil
-    )
+  private func makeMock(programs: [ProgramDTO] = [], channelID: String = "CH1") -> MockTVProvider {
+    let mock = MockTVProvider(isAuthenticated: true)
+    mock.setPrograms(programs, for: channelID)
+    return mock
   }
 
   @Test("Loads program entries successfully")
   @MainActor
   func loadPrograms() async {
-    let mock = MockHTTPSession()
-    let programJSON = """
-      {
-        "result": [{
-          "id": "CH1",
-          "name": "NHK",
-          "record_epg": "[{\\"time\\":1000,\\"title\\":\\"Morning Show\\",\\"path\\":\\"/query/morning\\"},{\\"time\\":2000,\\"title\\":\\"Afternoon Show\\",\\"path\\":\\"\\"},{\\"time\\":9999999999,\\"title\\":\\"Future Show\\",\\"path\\":\\"\\"}]"
-        }],
-        "code": "OK"
-      }
-      """
-    mock.requestHandler = { _ in
-      let response = HTTPURLResponse(
-        url: URL(string: "http://test.com")!, statusCode: 200, httpVersion: nil, headerFields: nil
-      )!
-      return (response, Data(programJSON.utf8))
-    }
-
-    let service = ProgramGuideService(apiClient: APIClient(session: mock.session), config: Self.testConfig)
+    let programs = [
+      ProgramDTO(time: 1000, title: "Morning Show", path: "/query/morning"),
+      ProgramDTO(time: 2000, title: "Afternoon Show", path: ""),
+      ProgramDTO(time: 9999999999, title: "Future Show", path: ""),
+    ]
+    let channelID = "load_\(UUID())"
+    let mock = makeMock(programs: programs, channelID: channelID)
     let vm = ProgramListViewModel(
-      programGuideService: service,
-      channelID: "load_\(UUID())", channelName: "NHK"
+      provider: mock,
+      channelID: channelID, channelName: "NHK"
     )
 
     await vm.loadPrograms()
@@ -52,21 +37,14 @@ struct ProgramListViewModelTests {
   @Test("Background refresh updates entries even when already populated")
   @MainActor
   func refreshesWhenPopulated() async {
-    let mock = MockHTTPSession()
-    mock.requestHandler = { _ in
-      let response = HTTPURLResponse(
-        url: URL(string: "http://test.com")!, statusCode: 200, httpVersion: nil, headerFields: nil
-      )!
-      let json = """
-        {"result": [{"id": "CH1", "name": "NHK", "record_epg": "[{\\"time\\":9999,\\"title\\":\\"Replaced\\",\\"path\\":\\"\\"}]"}], "code": "OK"}
-        """
-      return (response, Data(json.utf8))
-    }
-
-    let service = ProgramGuideService(apiClient: APIClient(session: mock.session), config: Self.testConfig)
+    let channelID = "refresh_\(UUID())"
+    let mock = makeMock(
+      programs: [ProgramDTO(time: 9999, title: "Replaced", path: "")],
+      channelID: channelID
+    )
     let vm = ProgramListViewModel(
-      programGuideService: service,
-      channelID: "refresh_\(UUID())", channelName: "NHK"
+      provider: mock,
+      channelID: channelID, channelName: "NHK"
     )
 
     // Pre-populate entries
@@ -82,28 +60,17 @@ struct ProgramListViewModelTests {
   @Test("Current program is detected")
   @MainActor
   func liveProgram() async {
-    let mock = MockHTTPSession()
-    let json = """
-      {
-        "result": [{
-          "id": "CH1",
-          "name": "NHK",
-          "record_epg": "[{\\"time\\":1000,\\"title\\":\\"Past Show\\",\\"path\\":\\"/past\\"},{\\"time\\":\(Int(Date().timeIntervalSince1970) - 100),\\"title\\":\\"Current Show\\",\\"path\\":\\"\\"},{\\"time\\":\(Int(Date().timeIntervalSince1970) + 3600),\\"title\\":\\"Future Show\\",\\"path\\":\\"\\"}]"
-        }],
-        "code": "OK"
-      }
-      """
-    mock.requestHandler = { _ in
-      let response = HTTPURLResponse(
-        url: URL(string: "http://test.com")!, statusCode: 200, httpVersion: nil, headerFields: nil
-      )!
-      return (response, Data(json.utf8))
-    }
-
-    let service = ProgramGuideService(apiClient: APIClient(session: mock.session), config: Self.testConfig)
+    let now = Int(Date().timeIntervalSince1970)
+    let channelID = "live_\(UUID())"
+    let programs = [
+      ProgramDTO(time: 1000, title: "Past Show", path: "/past"),
+      ProgramDTO(time: now - 100, title: "Current Show", path: ""),
+      ProgramDTO(time: now + 3600, title: "Future Show", path: ""),
+    ]
+    let mock = makeMock(programs: programs, channelID: channelID)
     let vm = ProgramListViewModel(
-      programGuideService: service,
-      channelID: "live_\(UUID())", channelName: "NHK"
+      provider: mock,
+      channelID: channelID, channelName: "NHK"
     )
 
     await vm.loadPrograms()
@@ -115,14 +82,10 @@ struct ProgramListViewModelTests {
   @Test("Load failure sets error message")
   @MainActor
   func loadFailure() async {
-    let mock = MockHTTPSession()
-    mock.requestHandler = { _ in
-      throw URLError(.notConnectedToInternet)
-    }
-
-    let service = ProgramGuideService(apiClient: APIClient(session: mock.session), config: Self.testConfig)
+    let mock = MockTVProvider(isAuthenticated: true)
+    mock.setShouldFailFetch(true)
     let vm = ProgramListViewModel(
-      programGuideService: service,
+      provider: mock,
       channelID: "fail_\(UUID())", channelName: "NHK"
     )
 
@@ -139,18 +102,13 @@ struct ProgramListViewModelTests {
 
 @Suite("ProgramListViewModel derived state")
 struct ProgramListViewModelDerivedStateTests {
-  static var testConfig: ProductConfig {
-    ProgramListViewModelTests.testConfig
-  }
-
   @Test("Setting entries updates liveProgram")
   @MainActor
   func entriesUpdateLiveProgram() {
     let now = Int(Date().timeIntervalSince1970)
-    let mock = MockHTTPSession()
-    let service = ProgramGuideService(apiClient: APIClient(session: mock.session), config: Self.testConfig)
+    let mock = MockTVProvider(isAuthenticated: true)
     let vm = ProgramListViewModel(
-      programGuideService: service,
+      provider: mock,
       channelID: "derived_\(UUID())", channelName: "NHK"
     )
 
@@ -168,10 +126,9 @@ struct ProgramListViewModelDerivedStateTests {
   @MainActor
   func entriesUpdateUpcoming() {
     let now = Int(Date().timeIntervalSince1970)
-    let mock = MockHTTPSession()
-    let service = ProgramGuideService(apiClient: APIClient(session: mock.session), config: Self.testConfig)
+    let mock = MockTVProvider(isAuthenticated: true)
     let vm = ProgramListViewModel(
-      programGuideService: service,
+      provider: mock,
       channelID: "derived_\(UUID())", channelName: "NHK"
     )
 
@@ -190,10 +147,9 @@ struct ProgramListViewModelDerivedStateTests {
   @MainActor
   func entriesUpdatePastByDate() {
     let now = Int(Date().timeIntervalSince1970)
-    let mock = MockHTTPSession()
-    let service = ProgramGuideService(apiClient: APIClient(session: mock.session), config: Self.testConfig)
+    let mock = MockTVProvider(isAuthenticated: true)
     let vm = ProgramListViewModel(
-      programGuideService: service,
+      provider: mock,
       channelID: "derived_\(UUID())", channelName: "NHK"
     )
 
@@ -214,10 +170,9 @@ struct ProgramListViewModelDerivedStateTests {
   @MainActor
   func clearingEntriesClearsDerived() {
     let now = Int(Date().timeIntervalSince1970)
-    let mock = MockHTTPSession()
-    let service = ProgramGuideService(apiClient: APIClient(session: mock.session), config: Self.testConfig)
+    let mock = MockTVProvider(isAuthenticated: true)
     let vm = ProgramListViewModel(
-      programGuideService: service,
+      provider: mock,
       channelID: "derived_\(UUID())", channelName: "NHK"
     )
 
@@ -378,10 +333,9 @@ struct ProgramListViewModelSectioningTests {
   @Test("displayedPastByDate paginates and showMorePast loads next page")
   @MainActor
   func pastPagination() {
-    let mock = MockHTTPSession()
-    let service = ProgramGuideService(apiClient: APIClient(session: mock.session), config: ProgramListViewModelTests.testConfig)
+    let mock = MockTVProvider(isAuthenticated: true)
     let vm = ProgramListViewModel(
-      programGuideService: service,
+      provider: mock,
       channelID: "page_\(UUID())",
       channelName: "NHK"
     )

@@ -5,101 +5,132 @@ import SwiftUI
 @MainActor
 @Observable
 public final class AppState {
-  public let keychain: KeychainService
-  public let apiClient: APIClient
-  public let authService: AuthService
-  public private(set) var channelService: ChannelService
-  public private(set) var programGuideService: ProgramGuideService
+  /// The currently active TV provider.
+  public private(set) var activeProvider: any TVProvider
 
-  public var session: AuthService.Session? {
-    didSet { rebuildServicesIfNeeded() }
-  }
+  /// All registered providers.
+  public let availableProviders: [any TVProvider]
+
+  /// Whether the app is still restoring a session on launch.
   public var isRestoringSession: Bool = true
 
-  public init() {
+  /// Whether the active provider has an authenticated session.
+  /// Observable wrapper around provider.isAuthenticated for SwiftUI reactivity.
+  public private(set) var isAuthenticated: Bool = false
+
+  /// Provider-specific account identifier (e.g. CID for YoiTV), shown in settings.
+  public private(set) var accountID: String?
+
+  /// Referer string for the proxy (YoiTV-specific, nil for providers that don't need it).
+  public private(set) var vmsReferer: String?
+
+  public init(providers: [any TVProvider]) {
     DiskCache.migrateFromUserDefaults()
-    let keychain = KeychainService()
-    let apiClient = APIClient()
-    self.keychain = keychain
-    self.apiClient = apiClient
-    self.authService = AuthService(keychain: keychain, apiClient: apiClient)
-    // Placeholder config — rebuilt once session is available
-    let placeholder = ProductConfig.placeholder
-    self.channelService = ChannelService(apiClient: apiClient, config: placeholder)
-    self.programGuideService = ProgramGuideService(apiClient: apiClient, config: placeholder)
+    precondition(!providers.isEmpty, "At least one provider is required")
+
+    self.availableProviders = providers
+
+    // Restore last-used provider or default to first
+    let lastID = UserDefaults.standard.string(forKey: "activeProviderID")
+    self.activeProvider = providers.first { $0.providerID == lastID } ?? providers[0]
   }
 
-  /// Testable initializer that accepts pre-built services
-  public init(
-    keychain: KeychainService = KeychainService(),
-    apiClient: APIClient,
-    authService: AuthService,
-    channelService: ChannelService,
-    programGuideService: ProgramGuideService
-  ) {
-    self.keychain = keychain
-    self.apiClient = apiClient
-    self.authService = authService
-    self.channelService = channelService
-    self.programGuideService = programGuideService
+  /// Testable initializer with a single provider.
+  public init(provider: any TVProvider) {
+    self.availableProviders = [provider]
+    self.activeProvider = provider
   }
 
-  private func rebuildServicesIfNeeded() {
-    guard let config = session?.productConfig else { return }
-    channelService = ChannelService(apiClient: apiClient, config: config)
-    programGuideService = ProgramGuideService(apiClient: apiClient, config: config)
-  }
+  // MARK: - Session lifecycle
 
-  /// Attempt to restore a previous session from the Keychain.
-  /// Unblocks the UI as soon as keychain restore completes (stale tokens are usable),
-  /// then refreshes tokens in the background.
+  /// Attempt to restore a previous session from persistent storage.
   public func restoreSession() async {
     isRestoringSession = true
-    session = try? await authService.restoreSession()
+    let restored = (try? await activeProvider.restoreSession()) ?? false
+    isAuthenticated = restored
+    syncProviderState()
     isRestoringSession = false
 
-    if session != nil {
-      do {
-        session = try await authService.refreshTokens()
-        await authService.startAutoRefresh()
-      } catch AuthError.sessionExpired {
-        // Server revoked the token — logout was already called
-        session = nil
-      } catch {
-        // Network error — keep using stored session with stale tokens
-        await authService.startAutoRefresh()
-      }
+    if restored {
+      await activeProvider.startAutoRefresh()
     }
   }
 
-  /// Log in with credentials and update session
+  /// Log in with credentials.
+  public func login(credentials: [String: String]) async throws {
+    try await activeProvider.login(credentials: credentials)
+    isAuthenticated = true
+    syncProviderState()
+    await activeProvider.startAutoRefresh()
+  }
+
+  /// Convenience for the two-field YoiTV login form.
   public func login(cid: String, password: String) async throws {
-    session = try await authService.login(cid: cid, password: password)
-    await authService.startAutoRefresh()
+    try await login(credentials: ["cid": cid, "password": password])
   }
 
-  /// Attempt silent re-login using stored credentials.
-  /// Returns the new session on success, or nil on auth failure (logout already called).
-  /// On transient network errors, returns nil but leaves session and password intact.
-  public func reauthenticate() async -> AuthService.Session? {
+  /// Attempt silent re-authentication using stored credentials.
+  /// Returns true on success, false on failure.
+  public func reauthenticate() async -> Bool {
     do {
-      let newSession = try await authService.reauthenticateWithStoredCredentials()
-      self.session = newSession
-      await authService.startAutoRefresh()
-      return newSession
-    } catch is AuthError {
-      // Definitive auth failure — credentials are bad, clear everything
-      await logout()
-      return nil
+      let success = try await activeProvider.reauthenticate()
+      if success {
+        isAuthenticated = true
+        syncProviderState()
+        return true
+      } else {
+        isAuthenticated = false
+        syncProviderState()
+        return false
+      }
     } catch {
-      // Transient network error — leave session and password intact
-      return nil
+      // Transient failure — leave state unchanged
+      return false
     }
   }
 
-  /// Clear session and return to login
+  /// Clear session and return to login.
   public func logout() async {
-    await authService.logout()
-    session = nil
+    await activeProvider.logout()
+    isAuthenticated = false
+    syncProviderState()
+  }
+
+  // MARK: - Provider switching
+
+  /// Switch to a different provider. Stops playback and attempts session restore.
+  public func switchProvider(to provider: any TVProvider) async {
+    await activeProvider.stopPlaybackEnforcement()
+    activeProvider = provider
+    UserDefaults.standard.set(provider.providerID, forKey: "activeProviderID")
+    isAuthenticated = false
+    syncProviderState()
+
+    let restored = (try? await provider.restoreSession()) ?? false
+    isAuthenticated = restored
+    syncProviderState()
+  }
+
+  // MARK: - Preview support
+
+  #if DEBUG
+  /// Set authenticated state for SwiftUI previews (bypasses provider auth flow).
+  public func setAuthenticatedForPreview() {
+    isAuthenticated = true
+    isRestoringSession = false
+  }
+  #endif
+
+  // MARK: - Internal
+
+  /// Sync provider-specific state into observable properties.
+  private func syncProviderState() {
+    if let yoitv = activeProvider as? YoiTVProviderAdapter {
+      accountID = yoitv.cid
+      vmsReferer = yoitv.vmsReferer
+    } else {
+      accountID = nil
+      vmsReferer = nil
+    }
   }
 }

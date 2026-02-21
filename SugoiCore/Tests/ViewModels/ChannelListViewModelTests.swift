@@ -5,7 +5,8 @@ import Testing
 
 @Suite("ChannelListViewModel")
 struct ChannelListViewModelTests {
-  static let channelsJSON = """
+  static let testChannels: [ChannelDTO] = {
+    let json = Data("""
     {
       "result": [
         {"id": "CH1", "name": "NHK総合", "description": "NHK General", "tags": "$LIVE_CAT_関東", "no": 1, "playpath": "/nhk", "running": 1},
@@ -14,34 +15,21 @@ struct ChannelListViewModelTests {
       ],
       "code": "OK"
     }
-    """
+    """.utf8)
+    return try! JSONDecoder().decode(ChannelListResponse.self, from: json).result
+  }()
 
-  static var testConfig: ProductConfig {
-    ProductConfig(
-      vmsHost: "http://live.yoitv.com:9083",
-      vmsVodHost: nil, vmsUid: "UID", vmsLiveCid: "CID",
-      vmsReferer: "http://play.yoitv.com", epgDays: nil, single: nil,
-      vmsChannelListHost: nil, vmsLiveHost: nil, vmsRecordHost: nil, vmsLiveUid: nil
-    )
-  }
-
-  private func makeMock() -> MockHTTPSession {
-    let mock = MockHTTPSession()
-    mock.requestHandler = { _ in
-      let response = HTTPURLResponse(
-        url: URL(string: "http://test.com")!, statusCode: 200, httpVersion: nil, headerFields: nil
-      )!
-      return (response, Data(Self.channelsJSON.utf8))
-    }
-    return mock
+  @MainActor
+  private func makeVM(channels: [ChannelDTO] = testChannels) -> (MockTVProvider, ChannelListViewModel) {
+    let mock = MockTVProvider(isAuthenticated: true, channels: channels)
+    let vm = ChannelListViewModel(provider: mock)
+    return (mock, vm)
   }
 
   @Test("Loads channels and groups them")
   @MainActor
   func loadChannels() async {
-    let mock = makeMock()
-    let service = ChannelService(apiClient: APIClient(session: mock.session), config: Self.testConfig)
-    let vm = ChannelListViewModel(channelService: service)
+    let (_, vm) = makeVM()
 
     await vm.loadChannels()
 
@@ -56,9 +44,7 @@ struct ChannelListViewModelTests {
   @Test("Search filters channels by name")
   @MainActor
   func searchByName() async {
-    let mock = makeMock()
-    let service = ChannelService(apiClient: APIClient(session: mock.session), config: Self.testConfig)
-    let vm = ChannelListViewModel(channelService: service)
+    let (_, vm) = makeVM()
 
     await vm.loadChannels()
     vm.searchText = "NHK"
@@ -72,9 +58,7 @@ struct ChannelListViewModelTests {
   @Test("Search filters channels by description")
   @MainActor
   func searchByDescription() async {
-    let mock = makeMock()
-    let service = ChannelService(apiClient: APIClient(session: mock.session), config: Self.testConfig)
-    let vm = ChannelListViewModel(channelService: service)
+    let (_, vm) = makeVM()
 
     await vm.loadChannels()
     vm.searchText = "Asahi"
@@ -87,9 +71,7 @@ struct ChannelListViewModelTests {
   @Test("Empty search returns all groups")
   @MainActor
   func emptySearchReturnsAll() async {
-    let mock = makeMock()
-    let service = ChannelService(apiClient: APIClient(session: mock.session), config: Self.testConfig)
-    let vm = ChannelListViewModel(channelService: service)
+    let (_, vm) = makeVM()
 
     await vm.loadChannels()
     vm.searchText = ""
@@ -97,73 +79,36 @@ struct ChannelListViewModelTests {
     #expect(vm.filteredGroups.count == vm.channelGroups.count)
   }
 
-  @Test("Config exposes channelListHost for thumbnail URL construction")
+  @Test("thumbnailURL delegates to provider")
   @MainActor
-  func thumbnailURLFromConfig() async {
-    let mock = makeMock()
-    let service = ChannelService(apiClient: APIClient(session: mock.session), config: Self.testConfig)
-    let vm = ChannelListViewModel(channelService: service)
+  func thumbnailURLDelegatesToProvider() async {
+    let (mock, vm) = makeVM()
+    let expectedURL = URL(string: "http://test.com/thumb.jpg")!
+    mock.setThumbnailHandler { _ in expectedURL }
 
     await vm.loadChannels()
 
     let channel = vm.channelGroups[0].channels[0]
-    let url = StreamURLBuilder.thumbnailURL(
-      channelListHost: vm.channelService.channelListHost,
-      playpath: channel.playpath
-    )
-    #expect(url != nil)
-    let str = url!.absoluteString
-    #expect(str == "http://live.yoitv.com:9083/nhk.jpg?type=live&thumbnail=thumbnail_small.jpg")
+    let url = vm.thumbnailURL(for: channel)
+    #expect(url == expectedURL)
   }
 
-  @Test("Each channel produces a distinct thumbnail URL")
+  @Test("thumbnailURL returns nil when provider returns nil")
   @MainActor
-  func distinctThumbnailURLsPerChannel() async {
-    let mock = makeMock()
-    let service = ChannelService(apiClient: APIClient(session: mock.session), config: Self.testConfig)
-    let vm = ChannelListViewModel(channelService: service)
-
-    await vm.loadChannels()
-
-    let allChannels = vm.channelGroups.flatMap(\.channels)
-    let urls = allChannels.compactMap {
-      StreamURLBuilder.thumbnailURL(
-        channelListHost: vm.channelService.channelListHost,
-        playpath: $0.playpath
-      )
-    }
-    #expect(urls.count == allChannels.count)
-    #expect(Set(urls).count == urls.count) // all unique
-  }
-
-  @Test("ChannelRow receives thumbnail URL matching its channel playpath")
-  @MainActor
-  func channelRowReceivesThumbnailURL() async {
-    let mock = makeMock()
-    let service = ChannelService(apiClient: APIClient(session: mock.session), config: Self.testConfig)
-    let vm = ChannelListViewModel(channelService: service)
+  func thumbnailURLNil() async {
+    let (_, vm) = makeVM()
 
     await vm.loadChannels()
 
     let channel = vm.channelGroups[0].channels[0]
-    let expectedURL = StreamURLBuilder.thumbnailURL(
-      channelListHost: vm.channelService.channelListHost,
-      playpath: channel.playpath
-    )
-    let row = ChannelRow(channel: channel, thumbnailURL: expectedURL)
-
-    #expect(row.thumbnailURL != nil)
-    #expect(row.thumbnailURL == expectedURL)
-    #expect(row.thumbnailURL!.absoluteString.contains(channel.playpath))
-    #expect(row.thumbnailURL!.absoluteString.contains("thumbnail_small.jpg"))
+    let url = vm.thumbnailURL(for: channel)
+    #expect(url == nil)
   }
 
   @Test("ChannelRow handles nil thumbnail URL")
   @MainActor
   func channelRowNilThumbnail() async {
-    let mock = makeMock()
-    let service = ChannelService(apiClient: APIClient(session: mock.session), config: Self.testConfig)
-    let vm = ChannelListViewModel(channelService: service)
+    let (_, vm) = makeVM()
 
     await vm.loadChannels()
 
@@ -176,13 +121,10 @@ struct ChannelListViewModelTests {
   @Test("Load failure sets error message")
   @MainActor
   func loadFailure() async {
-    let mock = MockHTTPSession()
-    mock.requestHandler = { _ in
-      throw URLError(.notConnectedToInternet)
-    }
-
-    let service = ChannelService(apiClient: APIClient(session: mock.session), config: Self.testConfig)
-    let vm = ChannelListViewModel(channelService: service)
+    // Provider with no channels that throws on fetch
+    let mock = MockTVProvider(isAuthenticated: true)
+    mock.setShouldFailFetch(true)
+    let vm = ChannelListViewModel(provider: mock)
 
     await vm.loadChannels()
 

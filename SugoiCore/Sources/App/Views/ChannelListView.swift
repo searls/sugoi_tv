@@ -8,18 +8,22 @@ public final class ChannelListViewModel {
   var errorMessage: String?
   var searchText: String = ""
 
-  let channelService: ChannelService
+  let provider: any TVProvider
   private let cacheKey = "cachedChannels"
 
-  public init(channelService: ChannelService) {
-    self.channelService = channelService
+  public init(provider: any TVProvider) {
+    self.provider = provider
+  }
+
+  func thumbnailURL(for channel: ChannelDTO) -> URL? {
+    provider.thumbnailURL(for: channel)
   }
 
   /// Populate channelGroups from disk cache (synchronous, no network).
   func loadCachedChannels() {
     guard let channels = DiskCache.load(key: cacheKey, as: [ChannelDTO].self),
           !channels.isEmpty else { return }
-    channelGroups = ChannelService.groupByCategory(channels)
+    channelGroups = provider.groupByCategory(channels)
   }
 
   /// Persist the current flat channel list to disk cache after a successful fetch.
@@ -43,8 +47,8 @@ public final class ChannelListViewModel {
     isLoading = true
     errorMessage = nil
     do {
-      let channels = try await channelService.fetchChannels()
-      channelGroups = ChannelService.groupByCategory(channels)
+      let channels = try await provider.fetchChannels()
+      channelGroups = provider.groupByCategory(channels)
       await cacheChannels(channels)
     } catch {
       errorMessage = "Failed to load channels."
@@ -87,7 +91,7 @@ public struct ChannelListView: View {
           ForEach(group.channels, id: \.id) { channel in
             ChannelRow(
               channel: channel,
-              thumbnailURL: viewModel.channelService.thumbnailURL(for: channel)
+              thumbnailURL: viewModel.thumbnailURL(for: channel)
             )
               .contentShape(Rectangle())
               .onTapGesture { onSelectChannel(channel) }

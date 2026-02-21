@@ -6,7 +6,12 @@ struct SugoiTVApp: App {
   #if os(macOS)
   @NSApplicationDelegateAdaptor private var appDelegate: AppDelegate
   #endif
-  @State private var appState = AppState()
+  @State private var appState: AppState = {
+    let keychain = KeychainService()
+    let apiClient = APIClient()
+    let provider = YoiTVProviderAdapter(keychain: keychain, apiClient: apiClient)
+    return AppState(providers: [provider])
+  }()
   #if os(macOS)
   @AppStorage("sidebarVisible") private var sidebarVisible = true
   #endif

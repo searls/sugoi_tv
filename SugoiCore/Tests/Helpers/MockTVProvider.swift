@@ -31,6 +31,8 @@ final class MockTVProvider: TVProvider, @unchecked Sendable {
 
   private var _liveStreamRequest: ((ChannelDTO) -> StreamRequest?)?
   private var _vodStreamRequest: ((ProgramDTO) -> StreamRequest?)?
+  private var _thumbnailURL: ((ChannelDTO) -> URL?)?
+  private var _shouldFailFetch = false
 
   init(
     displayName: String = "Mock",
@@ -73,19 +75,21 @@ final class MockTVProvider: TVProvider, @unchecked Sendable {
   // MARK: - Channels
 
   func fetchChannels() async throws -> [ChannelDTO] {
-    state.withLock { $0.channels }
+    if _shouldFailFetch { throw URLError(.notConnectedToInternet) }
+    return state.withLock { $0.channels }
   }
 
   func groupByCategory(_ channels: [ChannelDTO]) -> [(category: String, channels: [ChannelDTO])] {
     ChannelService.groupByCategory(channels)
   }
 
-  func thumbnailURL(for channel: ChannelDTO) -> URL? { nil }
+  func thumbnailURL(for channel: ChannelDTO) -> URL? { _thumbnailURL?(channel) }
 
   // MARK: - Programs
 
   func fetchPrograms(channelID: String) async throws -> [ProgramDTO] {
-    state.withLock { $0.programs[channelID] ?? [] }
+    if _shouldFailFetch { throw URLError(.notConnectedToInternet) }
+    return state.withLock { $0.programs[channelID] ?? [] }
   }
 
   // MARK: - Streaming
@@ -114,5 +118,13 @@ final class MockTVProvider: TVProvider, @unchecked Sendable {
 
   func setVODStreamHandler(_ handler: @escaping (ProgramDTO) -> StreamRequest?) {
     _vodStreamRequest = handler
+  }
+
+  func setThumbnailHandler(_ handler: @escaping (ChannelDTO) -> URL?) {
+    _thumbnailURL = handler
+  }
+
+  func setShouldFailFetch(_ shouldFail: Bool) {
+    _shouldFailFetch = shouldFail
   }
 }

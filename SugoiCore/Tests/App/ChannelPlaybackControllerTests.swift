@@ -328,7 +328,7 @@ struct ChannelPlaybackControllerSidebarPathTests {
 @Suite("ChannelPlaybackController.playChannel proxy fallback")
 @MainActor
 struct PlayChannelProxyFallbackTests {
-  @Test("playChannel uses direct URL when proxy is not ready")
+  @Test("playChannel uses direct URL when no proxy is configured")
   func playChannelDirectFallback() throws {
     let controller = try ControllerTestFixtures.makeController()
     let channel = ChannelDTO(
@@ -337,18 +337,18 @@ struct PlayChannelProxyFallbackTests {
       running: 1, playpath: "/query/s/nhk", liveType: nil
     )
 
-    // Proxy not started → falls back to direct URL
-    #expect(controller.refererProxy.isReady == false)
+    // No proxy configured (provider doesn't require one) → uses direct URL
+    #expect(controller.refererProxy == nil)
     controller.playChannel(channel)
     #expect(controller.playerManager.state != .idle)
   }
 
-  @Test("playVOD uses direct URL when proxy is not ready")
+  @Test("playVOD uses direct URL when no proxy is configured")
   func playVODDirectFallback() throws {
     let controller = try ControllerTestFixtures.makeController()
     let program = ProgramDTO(time: 1000, title: "Past Show", path: "/query/past_show")
 
-    #expect(controller.refererProxy.isReady == false)
+    #expect(controller.refererProxy == nil)
     controller.playVOD(program: program, channelName: "NHK")
     #expect(controller.playerManager.state != .idle)
   }

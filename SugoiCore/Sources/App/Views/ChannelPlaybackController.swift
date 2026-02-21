@@ -33,7 +33,6 @@ final class ChannelPlaybackController {
   /// Persists across navigation so returning to a channel is instant.
   private var programListVMs: [String: ProgramListViewModel] = [:]
 
-  private(set) var session: AuthService.Session
   /// One-shot guard: allows a single reauth attempt per stream load.
   /// Reset to false in playChannel(), set to true after attempting reauth.
   private(set) var hasAttemptedReauth = false
@@ -45,18 +44,20 @@ final class ChannelPlaybackController {
   /// Local HTTP proxy that injects Referer headers for AirPlay compatibility.
   /// When ready, stream URLs route through this proxy so the Apple TV can
   /// reach the VMS server without needing custom HTTP headers.
-  let refererProxy: RefererProxy
+  private(set) var refererProxy: RefererProxy?
 
-  private let programGuideService: ProgramGuideService
+  private let provider: any TVProvider
 
-  init(appState: AppState, session: AuthService.Session) {
-    self.session = session
-    self.programGuideService = appState.programGuideService
+  init(appState: AppState) {
+    self.provider = appState.activeProvider
     self.channelListVM = ChannelListViewModel(
-      channelService: appState.channelService
+      provider: appState.activeProvider
     )
-    self.refererProxy = RefererProxy(referer: session.productConfig.vmsReferer)
-    refererProxy.start()
+    if let referer = appState.vmsReferer {
+      let proxy = RefererProxy(referer: referer)
+      proxy.start()
+      self.refererProxy = proxy
+    }
 
     // Populate sidebar from cache immediately (no network)
     channelListVM.loadCachedChannels()
@@ -106,17 +107,13 @@ final class ChannelPlaybackController {
   func playChannel(_ channel: ChannelDTO) {
     hasAttemptedReauth = false
     preferredCompactColumn = .detail
-    guard let url = StreamURLBuilder.liveStreamURL(
-      liveHost: session.productConfig.liveHost,
-      playpath: channel.playpath,
-      accessToken: session.accessToken
-    ) else { return }
+    guard let request = provider.liveStreamRequest(for: channel) else { return }
 
     playingProgramID = nil
     loadingTitle = channel.name
     persistence.recordLivePlay(channelId: channel.id)
 
-    let (streamURL, referer) = resolveStreamURL(url)
+    let (streamURL, referer) = resolveStreamURL(request)
     playerManager.loadLiveStream(url: streamURL, referer: referer)
     playerManager.setNowPlayingInfo(title: channel.name, isLiveStream: true)
   }
@@ -132,7 +129,7 @@ final class ChannelPlaybackController {
       return existing
     }
     let vm = ProgramListViewModel(
-      programGuideService: programGuideService,
+      provider: provider,
       channelID: channel.id,
       channelName: channel.displayName
     )
@@ -144,17 +141,13 @@ final class ChannelPlaybackController {
     guard program.hasVOD else { return }
     hasAttemptedReauth = false
     preferredCompactColumn = .detail
-    guard let url = StreamURLBuilder.vodStreamURL(
-      recordHost: session.productConfig.recordHost,
-      path: program.path,
-      accessToken: session.accessToken
-    ) else { return }
+    guard let request = provider.vodStreamRequest(for: program) else { return }
 
     playingProgramID = program.id
     loadingTitle = program.title
     persistence.recordVODPlay(programPath: program.path, title: program.title, channelName: channelName)
 
-    let (streamURL, referer) = resolveStreamURL(url)
+    let (streamURL, referer) = resolveStreamURL(request)
     playerManager.loadVODStream(url: streamURL, referer: referer, resumeFrom: resumeFrom)
     playerManager.setNowPlayingInfo(title: "\(channelName) - \(program.title)", isLiveStream: false)
   }
@@ -163,11 +156,11 @@ final class ChannelPlaybackController {
 
   /// Route through the local referer proxy when available (enables AirPlay),
   /// otherwise return the direct URL with the referer header for AVURLAsset injection.
-  private func resolveStreamURL(_ url: URL) -> (url: URL, referer: String) {
-    if let proxiedURL = refererProxy.proxiedURL(for: url) {
+  private func resolveStreamURL(_ request: StreamRequest) -> (url: URL, referer: String) {
+    if request.requiresProxy, let proxy = refererProxy, let proxiedURL = proxy.proxiedURL(for: request.url) {
       return (proxiedURL, "")
     }
-    return (url, session.productConfig.vmsReferer)
+    return (request.url, request.headers["Referer"] ?? "")
   }
 
   // MARK: - Navigation
@@ -188,13 +181,6 @@ final class ChannelPlaybackController {
     if stopPlayback {
       playerManager.stop()
     }
-  }
-
-  // MARK: - Session
-
-  /// Update the session after a token refresh or reauth.
-  func updateSession(_ newSession: AuthService.Session) {
-    session = newSession
   }
 
   /// Attempt to handle a permission failure. Returns true if reauth should proceed,

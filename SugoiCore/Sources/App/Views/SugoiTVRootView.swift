@@ -11,8 +11,8 @@ public struct SugoiTVRootView: View {
     Group {
       if appState.isRestoringSession {
         ProgressView("Restoring session…")
-      } else if let session = appState.session {
-        AuthenticatedContainer(appState: appState, session: session)
+      } else if appState.isAuthenticated {
+        AuthenticatedContainer(appState: appState)
       } else {
         #if os(macOS)
         MacSignedOutPlaceholder()

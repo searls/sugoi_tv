@@ -9,7 +9,7 @@ public struct SettingsView: View {
 
   public var body: some View {
     Group {
-      if appState.session != nil {
+      if appState.isAuthenticated {
         signedInView
       } else {
         signedOutView
@@ -21,8 +21,8 @@ public struct SettingsView: View {
   private var signedInView: some View {
     Form {
       Section("Account") {
-        if let session = appState.session {
-          LabeledContent("Customer ID", value: session.cid)
+        if let accountID = appState.accountID {
+          LabeledContent("Customer ID", value: accountID)
         }
         Button("Sign Out", role: .destructive) {
           Task { await appState.logout() }

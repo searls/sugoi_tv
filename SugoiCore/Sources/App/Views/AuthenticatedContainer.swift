@@ -20,10 +20,10 @@ struct AuthenticatedContainer: View {
   @Environment(\.openSettings) private var openSettings
   #endif
 
-  init(appState: AppState, session: AuthService.Session) {
+  init(appState: AppState) {
     self.appState = appState
     self._controller = State(initialValue: ChannelPlaybackController(
-      appState: appState, session: session
+      appState: appState
     ))
   }
 
@@ -38,7 +38,7 @@ struct AuthenticatedContainer: View {
           playerManager: controller.playerManager,
           loadingTitle: controller.loadingTitle,
           loadingThumbnailURL: controller.selectedChannel.flatMap {
-            controller.channelListVM.channelService.thumbnailURL(for: $0)
+            controller.channelListVM.thumbnailURL(for: $0)
           }
         )
         #if os(macOS)
@@ -125,11 +125,6 @@ struct AuthenticatedContainer: View {
         controller.saveVODPositionIfNeeded()
       }
     }
-    .onChange(of: appState.session?.accessToken) { _, _ in
-      if let newSession = appState.session {
-        controller.updateSession(newSession)
-      }
-    }
     .onChange(of: controller.sidebarPath) { oldPath, newPath in
       if let channel = newPath.last, oldPath.last?.id != channel.id {
         // Framework-driven drill-in (NavigationStack push or swipe-back re-push).
@@ -149,13 +144,12 @@ struct AuthenticatedContainer: View {
          message.looksLikePermissionError,
          controller.handlePermissionFailure() {
         Task {
-          let newSession = await appState.reauthenticate()
-          if let newSession {
-            controller.updateSession(newSession)
+          let success = await appState.reauthenticate()
+          if success {
             controller.replayCurrentStream()
           }
           #if os(macOS)
-          if newSession == nil {
+          if !success {
             openSettings()
           }
           #endif
@@ -249,7 +243,7 @@ struct AuthenticatedContainer: View {
       ScrollViewReader { proxy in
         ChannelGridView(
           channelGroups: controller.channelListVM.filteredGroups,
-          channelService: controller.channelListVM.channelService,
+          thumbnailURL: { controller.channelListVM.thumbnailURL(for: $0) },
           onSelectChannel: { channel in
             channelSelection = channel.id
             withAnimation { controller.drillIntoChannel(channel, autoPlay: false) }
@@ -319,7 +313,7 @@ struct AuthenticatedContainer: View {
   private func channelItem(_ channel: ChannelDTO) -> some View {
     ChannelRow(
       channel: channel,
-      thumbnailURL: controller.channelListVM.channelService.thumbnailURL(for: channel)
+      thumbnailURL: controller.channelListVM.thumbnailURL(for: channel)
     )
     .tag(channel.id)
     .id(channel.id)

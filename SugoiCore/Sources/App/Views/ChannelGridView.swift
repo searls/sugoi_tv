@@ -71,7 +71,7 @@ struct ChannelCardView: View {
 
 struct ChannelGridView: View {
   let channelGroups: [(category: String, channels: [ChannelDTO])]
-  let channelService: ChannelService
+  let thumbnailURL: (ChannelDTO) -> URL?
   var onSelectChannel: (ChannelDTO) -> Void
 
   var body: some View {
@@ -88,7 +88,7 @@ struct ChannelGridView: View {
               } label: {
                 ChannelCardView(
                   channel: channel,
-                  thumbnailURL: channelService.thumbnailURL(for: channel)
+                  thumbnailURL: thumbnailURL(channel)
                 )
               }
               .buttonStyle(.plain)
@@ -118,27 +118,13 @@ struct ChannelGridView: View {
   )
   let response = try! JSONDecoder().decode(ChannelListResponse.self, from: data)
   let groups = ChannelService.groupByCategory(response.result)
-  let previewConfig = try! JSONDecoder().decode(ProductConfig.self, from: Data(#"{"vms_host":"http://live.yoitv.com:9083","vms_uid":"x","vms_live_cid":"x","vms_referer":"x"}"#.utf8))
 
   NavigationStack {
     ChannelGridView(
       channelGroups: groups,
-      channelService: ChannelService(apiClient: _PreviewNoOpAPIClient(), config: previewConfig),
+      thumbnailURL: { _ in nil },
       onSelectChannel: { _ in }
     )
     .navigationTitle("Channels")
   }
 }
-
-#if DEBUG
-private actor _PreviewNoOpAPIClient: APIClientProtocol {
-  func get<T: Decodable & Sendable>(url: URL, headers: [String: String]) async throws -> T {
-    fatalError("Preview stub")
-  }
-  func post<Body: Encodable & Sendable, Response: Decodable & Sendable>(
-    url: URL, headers: [String: String], body: Body
-  ) async throws -> Response {
-    fatalError("Preview stub")
-  }
-}
-#endif

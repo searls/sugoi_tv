@@ -5,6 +5,18 @@ import Foundation
 /// Shared test fixtures for ChannelPlaybackController test suites.
 /// Eliminates duplication of makeController() and JSON fixtures across 7 suites.
 enum ControllerTestFixtures {
+  static let testChannels: [ChannelDTO] = {
+    let json = Data(channelsJSON.utf8)
+    let response = try! JSONDecoder().decode(ChannelListResponse.self, from: json)
+    return response.result
+  }()
+
+  static let allStoppedChannels: [ChannelDTO] = {
+    let json = Data(allStoppedJSON.utf8)
+    let response = try! JSONDecoder().decode(ChannelListResponse.self, from: json)
+    return response.result
+  }()
+
   // Two categories, one channel running, to exercise all selection paths
   static let channelsJSON = """
     {
@@ -28,46 +40,36 @@ enum ControllerTestFixtures {
     }
     """
 
-  static let testLoginJSON = """
-    {
-      "access_token": "test_token",
-      "token_type": "bearer",
-      "expires_in": 1770770216,
-      "refresh_token": "test_refresh",
-      "expired": false,
-      "disabled": false,
-      "confirmed": true,
-      "cid": "TEST123",
-      "type": "tvum_cid",
-      "trial": 0,
-      "create_time": 1652403783,
-      "expire_time": 1782959503,
-      "product_config": "{\\"vms_host\\":\\"http://live.yoitv.com:9083\\",\\"vms_uid\\":\\"UID\\",\\"vms_live_cid\\":\\"CID\\",\\"vms_referer\\":\\"http://play.yoitv.com\\"}",
-      "server_time": 1770755816,
-      "code": "OK"
+  @MainActor
+  static func makeController(channels: [ChannelDTO]? = nil) throws -> ChannelPlaybackController {
+    let mock = MockTVProvider(
+      isAuthenticated: true,
+      channels: channels ?? testChannels
+    )
+    mock.setLiveStreamHandler { channel in
+      StreamRequest(
+        url: URL(string: "http://test.com\(channel.playpath).M3U8?type=live")!,
+        headers: ["Referer": "http://play.yoitv.com"],
+        requiresProxy: false
+      )
     }
-    """
+    mock.setVODStreamHandler { program in
+      guard program.hasVOD else { return nil }
+      return StreamRequest(
+        url: URL(string: "http://test.com\(program.path).m3u8?type=vod")!,
+        headers: ["Referer": "http://play.yoitv.com"],
+        requiresProxy: false
+      )
+    }
+
+    let appState = AppState(provider: mock)
+    return ChannelPlaybackController(appState: appState)
+  }
 
   @MainActor
-  static func makeController(channelsJSON: String = Self.channelsJSON) throws -> ChannelPlaybackController {
-    let mock = MockHTTPSession()
-    mock.requestHandler = { _ in
-      let response = HTTPURLResponse(
-        url: URL(string: "http://test.com")!, statusCode: 200, httpVersion: nil, headerFields: nil
-      )!
-      return (response, Data(channelsJSON.utf8))
-    }
-    let client = APIClient(session: mock.session)
-    let loginResponse = try JSONDecoder().decode(LoginResponse.self, from: Data(testLoginJSON.utf8))
-    let config = try loginResponse.parseProductConfig()
-
-    let auth = AuthService(keychain: MockKeychainService(), apiClient: client)
-    let channels = ChannelService(apiClient: client, config: config)
-    let programGuide = ProgramGuideService(apiClient: client, config: config)
-    let appState = AppState(apiClient: client, authService: auth, channelService: channels, programGuideService: programGuide)
-
-    let session = AuthService.Session(from: loginResponse, config: config)
-
-    return ChannelPlaybackController(appState: appState, session: session)
+  static func makeController(channelsJSON: String) throws -> ChannelPlaybackController {
+    let json = Data(channelsJSON.utf8)
+    let response = try JSONDecoder().decode(ChannelListResponse.self, from: json)
+    return try makeController(channels: response.result)
   }
 }
