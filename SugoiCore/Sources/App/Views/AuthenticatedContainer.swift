@@ -127,6 +127,17 @@ struct AuthenticatedContainer: View {
         controller.saveVODPositionIfNeeded()
       }
     }
+    .onChange(of: appState.activeProvider.providerID) { _, _ in
+      controller.playerManager.stop()
+      controller = ChannelPlaybackController(appState: appState)
+      channelSelection = nil
+      columnVisibility = .doubleColumn
+      Task {
+        await controller.refreshChannelList()
+        controller.selectFromCache()
+        focusChannelList()
+      }
+    }
     .onChange(of: controller.sidebarPath) { oldPath, newPath in
       if let channel = newPath.last, oldPath.last?.id != channel.id {
         // Framework-driven drill-in (NavigationStack push or swipe-back re-push).
